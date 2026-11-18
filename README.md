@@ -53,8 +53,8 @@ Google's review system uses a combination of **automated ML classifiers** and **
 ### 1. Installation
 Clone the repository and install optional rich dependencies:
 ```bash
-git clone https://github.com/oathanrex/developer-vault.git
-cd developer-vault/04-skill
+git clone https://github.com/oathanrex/adsenseready-ai.git
+cd adsenseready-ai
 pip install -r requirements.txt
 ```
 *(Zero mandatory dependencies: The core audit engine runs on pure Python standard library out of the box!)*
@@ -107,7 +107,7 @@ Add the following snippet to your MCP settings file:
   "mcpServers": {
     "adsenseready": {
       "command": "python",
-      "args": ["<PATH_TO_REPO>/04-skill/src/mcp_server.py"]
+      "args": ["<PATH_TO_REPO>/src/mcp_server.py"]
     }
   }
 }
