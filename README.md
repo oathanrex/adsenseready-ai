@@ -3,12 +3,14 @@
 # 🎯 AdSenseReady-AI
 ### The Universal AI Skill, Native MCP Server & 360° Automated Audit Engine for 100% Google AdSense Approval Readiness
 
-[![CI Test Suite](https://img.shields.io/badge/CI-Passing-brightgreen.svg)]()
-[![Python 3.8+](https://img.shields.io/badge/Python-3.8%20%7C%203.9%20%7C%203.10%20%7C%203.11%20%7C%203.12-blue.svg)](https://www.python.org/)
+[![CI Test Suite](https://github.com/oathanrex/adsenseready-ai/actions/workflows/test.yml/badge.svg)](https://github.com/oathanrex/adsenseready-ai/actions/workflows/test.yml)
+[![Python Versions](https://img.shields.io/badge/Python-3.10%20%7C%203.11%20%7C%203.12-blue.svg)](https://www.python.org/)
 [![Model Context Protocol](https://img.shields.io/badge/MCP-Compatible-purple.svg)](https://modelcontextprotocol.io/)
 [![Google Policies](https://img.shields.io/badge/Google%20Policy%20Sync-Live%20v2026.11-success.svg)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Curated by Oathan Rex](https://img.shields.io/badge/Author-Oathan%20Rex-0d6e52.svg)](https://github.com/oathanrex)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/oathanrex/adsenseready-ai/blob/main/CONTRIBUTING.md)
+[![GitHub Stars](https://img.shields.io/github/stars/oathanrex/adsenseready-ai?style=social)](https://github.com/oathanrex/adsenseready-ai/stargazers)
 
 *Eliminate Google AdSense rejections for **"Low Value Content"**, **"Site Under Construction"**, and **"Policy Violations"**. Forensic 7-pillar evaluation with dynamic auto-updating Google policy sync.*
 
@@ -147,14 +149,27 @@ python scripts/sync_policies.py
 
 ## 🧪 Testing & Verification
 
-Run the full automated test suite (all 7 tests passing):
+Run the full automated test suite (15/15 tests passing):
 ```bash
 python -m pytest tests/
 ```
 
 ---
 
+## 🤝 Contributing
+
+Contributions, feedback, and new policy heuristics are welcomed!
+Please read our [Contributing Guidelines](CONTRIBUTING.md) to get started.
+
+1. Fork the Project
+2. Create your Feature Branch (`git checkout -b feature/AmazingChecker`)
+3. Commit your Changes (`git commit -m 'feat: add new trust signal check'`)
+4. Push to the Branch (`git push origin feature/AmazingChecker`)
+5. Open a Pull Request
+
+---
+
 ## 📄 License & Credits
 
 Created and curated by **[Oathan Rex](https://github.com/oathanrex)** under the **MIT License**.  
-Part of **[The Developer Vault](https://github.com/oathanrex/developer-vault)**.
+Explore more production tools and AI engineering playbooks in **[The Developer Vault](https://github.com/oathanrex/developer-vault)**.

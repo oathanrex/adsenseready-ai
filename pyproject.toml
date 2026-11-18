@@ -5,13 +5,46 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "adsenseready-ai"
 version = "2026.11.1"
-description = "Universal AI Skill & Automated Audit Engine for 100% Google AdSense Approval Readiness"
+description = "Universal AI Skill, Native MCP Server & 360-Degree Automated Audit Engine for 100% Google AdSense Approval Readiness"
 readme = "README.md"
+authors = [
+    { name = "Oathan Rex", email = "oathanrex@gmail.com" }
+]
+license = { text = "MIT" }
 requires-python = ">=3.8"
-keywords = ["adsense", "google-adsense", "ai-skill", "seo-audit", "publisher-policies"]
+keywords = [
+    "adsense",
+    "google-adsense",
+    "ai-skill",
+    "seo-audit",
+    "publisher-policies",
+    "mcp-server",
+    "model-context-protocol",
+    "claude-code",
+    "antigravity",
+    "eeat"
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Internet :: WWW/HTTP :: Site Management",
+    "Topic :: Software Development :: Quality Assurance"
+]
 dependencies = [
     "rich>=13.0.0"
 ]
 
+[project.urls]
+Homepage = "https://github.com/oathanrex/adsenseready-ai"
+Documentation = "https://github.com/oathanrex/adsenseready-ai#readme"
+Repository = "https://github.com/oathanrex/adsenseready-ai.git"
+Issues = "https://github.com/oathanrex/adsenseready-ai/issues"
+
 [project.scripts]
 adsense-audit = "src.cli:main"
+adsenseready-mcp = "src.mcp_server:main"
