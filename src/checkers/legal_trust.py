@@ -179,7 +179,7 @@ class LegalTrustChecker:
         pillar.max_score += 4.0
 
         # 4. Contact Us
-        contact_found = any(k in homepage_lower for k in ["contact us", "contact me", "get in touch"])
+        contact_found = any(k in homepage_lower for k in ["contact us", "contact me", "get in touch", "contact"])
         contact_content = ""
         for url, content in crawled_pages.items():
             if "contact" in url.lower():
@@ -192,7 +192,8 @@ class LegalTrustChecker:
             "@" in contact_content or
             "<form" in contact_content or
             "contact-form" in contact_content or
-            "mailto:" in homepage_lower
+            "mailto:" in homepage_lower or
+            "@" in homepage_lower
         )
 
         if contact_found and has_email_or_form:

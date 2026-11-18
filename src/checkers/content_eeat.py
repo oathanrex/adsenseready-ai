@@ -81,7 +81,7 @@ class ContentEEATChecker:
 
         return score, rating
 
-    def run(self, article_urls: List[str], article_pages: Dict[str, str]) -> PillarResult:
+    def run(self, article_urls: List[str], article_pages: Dict[str, str], is_web_app: bool = False) -> PillarResult:
         pillar = PillarResult(
             id="content_eeat",
             name="Content Depth, Originality & E-E-A-T Quality",
@@ -94,7 +94,46 @@ class ContentEEATChecker:
         total_articles = len(article_urls)
 
         # 1. Total Article Volume
-        if total_articles >= 25:
+        if is_web_app:
+            if total_articles >= 4:
+                pillar.checks.append(CheckResult(
+                    id="minimum_article_count",
+                    name="Article Inventory Volume",
+                    status=CheckStatus.PASS,
+                    severity=Severity.BLOCKER,
+                    score=6.0,
+                    max_score=6.0,
+                    details=f"Web Application mode: {total_articles} comprehensive documentation guides detected. Complies with Google AdSense utility tool content standards.",
+                    doc_url="https://support.google.com/adsense/answer/10502938"
+                ))
+                pillar.earned_score += 6.0
+            elif total_articles >= 2:
+                pillar.checks.append(CheckResult(
+                    id="minimum_article_count",
+                    name="Article Inventory Volume",
+                    status=CheckStatus.WARNING,
+                    severity=Severity.BLOCKER,
+                    score=3.5,
+                    max_score=6.0,
+                    details=f"Web Application mode: Borderline documentation volume ({total_articles} guides found).",
+                    fix_recommendation="Publish 2 additional in-depth technical guides or how-it-works articles.",
+                    doc_url="https://support.google.com/adsense/answer/10502938"
+                ))
+                pillar.earned_score += 3.5
+            else:
+                pillar.checks.append(CheckResult(
+                    id="minimum_article_count",
+                    name="Article Inventory Volume",
+                    status=CheckStatus.FAIL,
+                    severity=Severity.BLOCKER,
+                    score=1.0,
+                    max_score=6.0,
+                    details=f"Web Application mode: Insufficient documentation ({total_articles} guides found).",
+                    fix_recommendation="Publish a minimum of 4 comprehensive technical guides for your utility app.",
+                    doc_url="https://support.google.com/adsense/answer/10502938"
+                ))
+                pillar.earned_score += 1.0
+        elif total_articles >= 25:
             pillar.checks.append(CheckResult(
                 id="minimum_article_count",
                 name="Article Inventory Volume",
@@ -195,7 +234,10 @@ class ContentEEATChecker:
         avg_readability = round(sum(readability_scores) / len(readability_scores), 1) if readability_scores else 60.0
 
         # 2. Average Word Count (Thin Content Check)
-        if avg_words >= 800:
+        min_depth = 400 if is_web_app else 800
+        acceptable_depth = 300 if is_web_app else 600
+
+        if avg_words >= min_depth:
             pillar.checks.append(CheckResult(
                 id="average_word_count",
                 name="Article Depth & Substance (Avg Word Count)",
@@ -207,7 +249,7 @@ class ContentEEATChecker:
                 doc_url="https://developers.google.com/search/docs/essentials/spam-policies#thin-content"
             ))
             pillar.earned_score += 5.0
-        elif avg_words >= 600:
+        elif avg_words >= acceptable_depth:
             pillar.checks.append(CheckResult(
                 id="average_word_count",
                 name="Article Depth & Substance (Avg Word Count)",

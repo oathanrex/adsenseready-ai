@@ -129,21 +129,52 @@ class AdSenseAuditor:
         sitemap_url = ""
 
         if not mock_html:
-            robots_content, _, _ = self.fetch_url(f"{origin}/robots.txt", timeout=6)
-            if robots_content and "User-agent" in robots_content:
-                robots_txt = robots_content
-                sitemap_match = re.search(r"Sitemap:\s*(\S+)", robots_content, re.IGNORECASE)
-                if sitemap_match:
-                    sitemap_found = True
-                    sitemap_url = sitemap_match.group(1)
+            target_base = target_url.rstrip("/")
+            probe_bases = [target_base] if target_base != origin else [origin]
+            if origin not in probe_bases:
+                probe_bases.append(origin)
+
+            for b in probe_bases:
+                robots_content, _, _ = self.fetch_url(f"{b}/robots.txt", timeout=6)
+                if robots_content and "User-agent" in robots_content:
+                    robots_txt = robots_content
+                    sitemap_match = re.search(r"Sitemap:\s*(\S+)", robots_content, re.IGNORECASE)
+                    if sitemap_match:
+                        sitemap_found = True
+                        sitemap_url = sitemap_match.group(1)
+                    break
 
             if not sitemap_found:
-                for s_path in ["/sitemap.xml", "/sitemap_index.xml", "/wp-sitemap.xml"]:
-                    s_content, _, _ = self.fetch_url(f"{origin}{s_path}", timeout=6)
-                    if s_content and ("<urlset" in s_content or "<sitemapindex" in s_content):
-                        sitemap_found = True
-                        sitemap_url = f"{origin}{s_path}"
+                for b in probe_bases:
+                    for s_path in ["/sitemap.xml", "/sitemap_index.xml", "/wp-sitemap.xml"]:
+                        s_content, _, _ = self.fetch_url(f"{b}{s_path}", timeout=6)
+                        if s_content and ("<urlset" in s_content or "<sitemapindex" in s_content):
+                            sitemap_found = True
+                            sitemap_url = f"{b}{s_path}"
+                            break
+                    if sitemap_found:
                         break
+
+            # If sitemap was discovered, extract all <loc> entries into internal_links
+            if sitemap_found and sitemap_url:
+                s_body, _, _ = self.fetch_url(sitemap_url, timeout=6)
+                if s_body:
+                    loc_matches = re.findall(r"<loc>([^<]+)</loc>", s_body, re.IGNORECASE)
+                    for loc in loc_matches:
+                        clean_loc = loc.strip()
+                        if clean_loc and clean_loc not in internal_links:
+                            internal_links.append(clean_loc)
+
+            # Re-categorize legal and article candidates with discovered sitemap links
+            for link in internal_links:
+                lower_link = link.lower()
+                if any(k in lower_link for k in legal_keywords):
+                    if link not in legal_candidates:
+                        legal_candidates.append(link)
+                else:
+                    if not any(ex in lower_link for ex in ["/category/", "/tag/", "/author/", "/page/", ".jpg", ".png", "/feed"]):
+                        if link not in article_candidates and link.rstrip("/") != target_base and not link.rstrip("/").endswith("/guides"):
+                            article_candidates.append(link)
         else:
             robots_txt = "User-agent: *\nAllow: /\nUser-agent: Mediapartners-Google\nAllow: /"
             sitemap_found = True
@@ -152,7 +183,7 @@ class AdSenseAuditor:
         # 4. Crawl Sample Legal Pages & Articles
         crawled_pages = {"homepage": homepage_html}
 
-        if not mock_html:
+        if target_url.startswith("http") and (legal_candidates or article_candidates):
             for l_url in legal_candidates[:5]:
                 content, _, _ = self.fetch_url(l_url, timeout=6)
                 if content:
@@ -173,9 +204,13 @@ class AdSenseAuditor:
                 article_candidates = [f"{origin}/post-{i}" for i in range(1, 26)]
                 sample_articles = {f"{origin}/post-{i}": homepage_html for i in range(1, 6)}
 
+        # 4.5 Detect Web App Nature early
+        total_home_words = len(re.sub(r"<[^>]+>", " ", homepage_html).split())
+        is_app = WebAppAdSenseEvaluator.is_interactive_app(homepage_html, total_home_words)
+
         # 5. Execute 7-Pillar Checkers
         p1 = LegalTrustChecker(self.rules).run(target_url, homepage_html, crawled_pages)
-        p2 = ContentEEATChecker(self.rules).run(article_candidates, sample_articles)
+        p2 = ContentEEATChecker(self.rules).run(article_candidates, sample_articles, is_web_app=is_app)
         p3 = TechSEOChecker(self.rules).run(target_url, homepage_html, robots_txt, sitemap_found, sitemap_url, latency)
         p4 = SiteStructureChecker(self.rules).run(homepage_html, crawled_pages, internal_links)
         p5 = PolicyProhibitedChecker(self.rules).run(homepage_html, crawled_pages)
@@ -196,8 +231,6 @@ class AdSenseAuditor:
         cms_data = CMSDetector.detect(homepage_html)
         
         # Check if site is an interactive web app / SaaS utility
-        total_home_words = len(re.sub(r"<[^>]+>", " ", homepage_html).split())
-        is_app = WebAppAdSenseEvaluator.is_interactive_app(homepage_html, total_home_words)
         web_app_data = None
         if is_app:
             web_app_data = WebAppAdSenseEvaluator.evaluate_app(target_url, homepage_html, internal_links)

@@ -20,6 +20,12 @@ class WebAppAdSenseEvaluator:
     @classmethod
     def is_interactive_app(cls, html: str, total_words: int) -> bool:
         """Determines if a site is primarily an interactive web application rather than a content blog."""
+        # Schema or tool keywords
+        if '"@type": "WebApplication"' in html or '"@type":"WebApplication"' in html or 'id="root"' in html:
+            return True
+        if any(k in html.lower() for k in ["speech-to-text", "dictation", "calculator", "converter", "transcriber"]):
+            return True
+
         app_markers = [
             r"<canvas",
             r"<button[^>]*>.*?</button>",
