@@ -1,6 +1,6 @@
 {
   "version": "2026.11.0",
-  "last_synced": "2026-11-17T13:28:51.469658Z",
+  "last_synced": "2026-11-22T05:35:56.796587Z",
   "sync_interval_days": 7,
   "sources": [
     {
@@ -10,8 +10,8 @@
       "url": "https://support.google.com/adsense/answer/10502938",
       "rss_feed": "https://blog.google/products/ads-commerce/rss/",
       "critical_for_approval": true,
-      "last_hash": "56a891252b399eca8f73980febab1348aff3a87d267b26afc686e25f79116fe0",
-      "last_checked": "2026-11-17T13:28:42.841918Z"
+      "last_hash": "9593ace6d09a28270eb70c9cb86be8dbb84d9a72b518097b230ec768956c813c",
+      "last_checked": "2026-11-22T05:35:54.844626Z"
     },
     {
       "id": "program_policies",
@@ -19,8 +19,8 @@
       "category": "account_eligibility",
       "url": "https://support.google.com/adsense/answer/48182",
       "critical_for_approval": true,
-      "last_hash": "1b595ff8069baed8555054ac1c00f6e5b9d8e291cfc921dda8d5f1f36472516a",
-      "last_checked": "2026-11-17T13:28:45.244533Z"
+      "last_hash": "444323904a70ac80ef68fcef288d66872880f915e3b73361560e740df7b2a378",
+      "last_checked": "2026-11-22T05:35:55.286470Z"
     },
     {
       "id": "search_essentials",
@@ -29,8 +29,8 @@
       "url": "https://developers.google.com/search/docs/essentials",
       "rss_feed": "https://blog.google/products/search/rss/",
       "critical_for_approval": true,
-      "last_hash": "0755947618cf9fd09af03d43134db7a8932a13cb7e9047180cbea7a092f0ef6a",
-      "last_checked": "2026-11-17T13:28:46.465509Z"
+      "last_hash": "74f9f5d5bb37a019946c0b997e0a64849001aac27a29e19516decd5dfe683e64",
+      "last_checked": "2026-11-22T05:35:55.531639Z"
     },
     {
       "id": "spam_policies",
@@ -39,7 +39,7 @@
       "url": "https://developers.google.com/search/docs/essentials/spam-policies",
       "critical_for_approval": true,
       "last_hash": "2aea37bc5f07db36c53e386b6fd1d6dbfa1356467d617b670bdd4267a18fd0bd",
-      "last_checked": "2026-11-17T13:28:47.792748Z"
+      "last_checked": "2026-11-22T05:35:56.153504Z"
     },
     {
       "id": "eu_consent_cmp",
@@ -47,8 +47,8 @@
       "category": "legal_privacy",
       "url": "https://support.google.com/adsense/answer/13554116",
       "critical_for_approval": true,
-      "last_hash": "636295ed64c957799b6a146960e949f4b9c9538a266508446018eef0553d3286",
-      "last_checked": "2026-11-17T13:28:50.468842Z"
+      "last_hash": "4a2f52b703520c6c60ec59235bd2a907e021cef1dbbbf3ccc043204ee17d4abc",
+      "last_checked": "2026-11-22T05:35:56.393164Z"
     },
     {
       "id": "ad_placement_policies",
@@ -56,8 +56,8 @@
       "category": "ux_placement",
       "url": "https://support.google.com/adsense/answer/1346295",
       "critical_for_approval": true,
-      "last_hash": "1e0908e28bfdb53f1f6683d98761084d8106d4b583b4d958c47a0a524765f42a",
-      "last_checked": "2026-11-17T13:28:51.469658Z"
+      "last_hash": "256f14b922e633ddab6cabb4b038434696d8c6f9d2ae0d50a5880b46ea122c9e",
+      "last_checked": "2026-11-22T05:35:56.796578Z"
     }
   ]
 }

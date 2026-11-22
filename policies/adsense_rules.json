@@ -1,7 +1,7 @@
 {
-  "version": "2026.11.2",
+  "version": "2026.11.3",
   "policy_year": 2026,
-  "last_updated": "2026-11-17T13:28:51.469658Z",
+  "last_updated": "2026-11-22T05:35:56.796848Z",
   "approval_threshold_score": 85,
   "strict_mode_threshold": 92,
   "pillars": {

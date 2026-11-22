@@ -1,5 +1,18 @@
 [
   {
+    "version": "2026.11.3",
+    "date": "2026-11-22",
+    "author": "Dynamic PolicySync Engine",
+    "summary": "Automated sync detected updates across Google Publisher Policy endpoints. Latest: '400 publications are now partnering with us on our News AI pilot program.'",
+    "rules_updated": [
+      "synced_all_pillars"
+    ],
+    "announcements_tracked": [
+      "400 publications are now partnering with us on our News AI pilot program.",
+      "3 new ways we're improving Search profiles for publishers"
+    ]
+  },
+  {
     "version": "2026.11.2",
     "date": "2026-11-17",
     "author": "Dynamic PolicySync Engine",
