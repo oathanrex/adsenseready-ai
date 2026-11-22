@@ -12,7 +12,7 @@ class PolicyProhibitedChecker:
         self.rules = rules.get("pillars", {}).get("google_publisher_policy", {})
         self.weight = self.rules.get("weight", 15)
 
-    def run(self, homepage_html: str, crawled_pages: Dict[str, str]) -> PillarResult:
+    def run(self, homepage_html: str, crawled_pages: Dict[str, str], target_url: str = "") -> PillarResult:
         pillar = PillarResult(
             id="google_publisher_policy",
             name="Google Publisher Policies & Prohibited Niches",
@@ -129,5 +129,193 @@ class PolicyProhibitedChecker:
                 doc_url="https://support.google.com/adsense/answer/10502938"
             ))
         pillar.max_score += 4.0
+
+        # 4. Hate Speech, Discrimination & Dangerous Products
+        # Source: Google's official "Inappropriate content" policy
+        # (support.google.com/adspolicy/answer/6015406) separately prohibits
+        # "dangerous or derogatory content" (promotion of discrimination, hatred
+        # against protected groups) and "dangerous products or services" (illegal
+        # drugs, weapons sales, tobacco sales) as distinct categories from generic
+        # piracy/adult content already covered above.
+        hate_dangerous_terms = [
+            "racial slur", "ethnic cleansing", "hate group", "white supremacy",
+            "incites violence against", "promotes discrimination against",
+            "buy drugs online", "buy cocaine", "buy heroin", "illegal firearms for sale",
+            "untraceable guns", "buy ammunition no license", "order tobacco online",
+            "sell endangered species", "human trafficking"
+        ]
+        found_hate_dangerous = [t for t in hate_dangerous_terms if t in all_text]
+
+        if not found_hate_dangerous:
+            pillar.checks.append(CheckResult(
+                id="hate_speech_dangerous_products_check",
+                name="Hate Speech, Discrimination & Dangerous Products",
+                status=CheckStatus.PASS,
+                severity=Severity.BLOCKER,
+                score=3.0,
+                max_score=3.0,
+                details="No discriminatory/hate-speech language or dangerous-products (illegal drugs, untraceable weapons, trafficking) signals detected.",
+                doc_url="https://support.google.com/adspolicy/answer/6015406"
+            ))
+            pillar.earned_score += 3.0
+        else:
+            pillar.checks.append(CheckResult(
+                id="hate_speech_dangerous_products_check",
+                name="Hate Speech, Discrimination & Dangerous Products",
+                status=CheckStatus.FAIL,
+                severity=Severity.BLOCKER,
+                score=0.0,
+                max_score=3.0,
+                details=f"CRITICAL VIOLATION: Detected dangerous/derogatory content or dangerous-products signals: {', '.join(found_hate_dangerous)}.",
+                fix_recommendation="Remove all discriminatory language and any content facilitating illegal drugs, untraceable weapons, or trafficking immediately — this is a zero-tolerance Google Publisher Policy category.",
+                doc_url="https://support.google.com/adspolicy/answer/6015406"
+            ))
+        pillar.max_score += 3.0
+
+        # 5. Misrepresentation / Clickbait Titles
+        # Source: AdSense "Misrepresentative content" policy
+        # (support.google.com/adsense/answer/1348688) plus widely-reported blog
+        # rejection reason — sensationalist/clickbait headlines are flagged as
+        # low-value or deceptive content during manual review.
+        title_texts = re.findall(r'<title[^>]*>(.*?)</title>', homepage_html, re.IGNORECASE | re.DOTALL)
+        h1_texts = re.findall(r'<h1[^>]*>(.*?)</h1>', homepage_html, re.IGNORECASE | re.DOTALL)
+        headline_sample = " ".join(title_texts + h1_texts)
+        clean_headline_sample = re.sub(r'<[^>]+>', ' ', headline_sample)
+
+        clickbait_patterns = [
+            r"you won'?t believe", r"doctors hate (?:this|him|her)", r"this one (?:weird|simple) trick",
+            r"what happened next will", r"number \d+ will (?:shock|surprise) you", r"\bshocking\b.{0,20}\btruth\b"
+        ]
+        excessive_caps = bool(re.search(r'\b[A-Z]{6,}\b', clean_headline_sample))
+        excessive_bang = "!!" in clean_headline_sample
+        found_clickbait = [p for p in clickbait_patterns if re.search(p, clean_headline_sample, re.IGNORECASE)]
+
+        if not found_clickbait and not excessive_caps and not excessive_bang:
+            pillar.checks.append(CheckResult(
+                id="misrepresentation_clickbait_check",
+                name="Misrepresentation / Clickbait Headline Patterns",
+                status=CheckStatus.PASS,
+                severity=Severity.MEDIUM,
+                score=2.0,
+                max_score=2.0,
+                details="Page title/H1 do not exhibit clickbait phrasing, excessive capitalization, or sensationalist patterns.",
+                doc_url="https://support.google.com/adsense/answer/1348688"
+            ))
+            pillar.earned_score += 2.0
+        else:
+            reasons = found_clickbait + (["excessive ALL-CAPS wording"] if excessive_caps else []) + (["excessive '!!' punctuation"] if excessive_bang else [])
+            pillar.checks.append(CheckResult(
+                id="misrepresentation_clickbait_check",
+                name="Misrepresentation / Clickbait Headline Patterns",
+                status=CheckStatus.WARNING,
+                severity=Severity.MEDIUM,
+                score=0.5,
+                max_score=2.0,
+                details=f"Headline(s) show sensationalist/clickbait signals: {', '.join(reasons)}.",
+                fix_recommendation="Rewrite titles/H1s to accurately represent the content rather than using sensationalist or misleading hooks — commonly cited as an AdSense manual-review rejection trigger.",
+                doc_url="https://support.google.com/adsense/answer/1348688"
+            ))
+            pillar.earned_score += 0.5
+        pillar.max_score += 2.0
+
+        # 6. Competing/High-Risk Ad Network Presence
+        # Not a documented hard Google policy violation, but widely reported by
+        # publisher blogs (e.g. spelloutmarketing.com, blogpros.com) as approval
+        # friction, especially for aggressive pop-under/push networks whose
+        # behaviors (forced redirects, disruptive pop-ups) overlap with AdSense's
+        # own "valuable inventory" and invalid-traffic policies.
+        aggressive_networks = {
+            "propellerads": "PropellerAds", "adsterra": "Adsterra", "popads.net": "PopAds",
+            "exoclick": "ExoClick", "juicyads": "JuicyAds", "popcash": "PopCash",
+            "adcash": "Adcash"
+        }
+        soft_networks = {
+            "media.net": "Media.net", "taboola": "Taboola", "outbrain": "Outbrain",
+            "infolinks": "Infolinks", "revcontent": "Revcontent", "bidvertiser": "BidVertiser"
+        }
+        found_aggressive = sorted({label for key, label in aggressive_networks.items() if key in all_text})
+        found_soft = sorted({label for key, label in soft_networks.items() if key in all_text})
+
+        if not found_aggressive and not found_soft:
+            pillar.checks.append(CheckResult(
+                id="competing_ad_network_check",
+                name="Competing / High-Risk Ad Network Presence",
+                status=CheckStatus.PASS,
+                severity=Severity.LOW,
+                score=1.0,
+                max_score=1.0,
+                details="No competing ad-network scripts detected on the homepage.",
+                doc_url="https://support.google.com/adsense/answer/1346295"
+            ))
+            pillar.earned_score += 1.0
+        elif found_aggressive:
+            pillar.checks.append(CheckResult(
+                id="competing_ad_network_check",
+                name="Competing / High-Risk Ad Network Presence",
+                status=CheckStatus.WARNING,
+                severity=Severity.HIGH,
+                score=0.2,
+                max_score=1.0,
+                details=f"Detected aggressive pop-under/push ad network(s) known for disruptive UX: {', '.join(found_aggressive)}. Multiple publisher reports cite these as hurting AdSense approval odds.",
+                fix_recommendation="Remove pop-under/push ad networks before applying for (or while running) AdSense — their forced redirects and disruptive ad experience conflict with Google's ad-experience and invalid-traffic policies.",
+                doc_url="https://support.google.com/adsense/answer/1346295"
+            ))
+            pillar.earned_score += 0.2
+        else:
+            pillar.checks.append(CheckResult(
+                id="competing_ad_network_check",
+                name="Competing / High-Risk Ad Network Presence",
+                status=CheckStatus.WARNING,
+                severity=Severity.LOW,
+                score=0.6,
+                max_score=1.0,
+                details=f"Detected other display ad network(s): {', '.join(found_soft)}. Not a policy violation, but several publisher reports note removing competing networks before applying can reduce review friction.",
+                fix_recommendation="Consider temporarily removing other ad networks while awaiting AdSense approval, then re-introduce if desired after approval.",
+                doc_url="https://support.google.com/adsense/answer/1346295"
+            ))
+            pillar.earned_score += 0.6
+        pillar.max_score += 1.0
+
+        # 7. Own-Domain vs. Free-Subdomain Hosting
+        # Source: widely-reported blog rejection cause (e.g. blogpros.com) — sites
+        # on shared free subdomains (blogspot.com, wordpress.com, weebly.com, etc.)
+        # face much higher AdSense rejection rates than sites on a fully-owned
+        # custom domain, and some free-hosting platforms are not eligible at all.
+        free_subdomain_hosts = [
+            "blogspot.com", "wordpress.com", "weebly.com", "wixsite.com", "webs.com",
+            "tripod.com", "angelfire.com", "yolasite.com", "site123.me", "webador.com",
+            "jimdofree.com", "ucoz.com", "blogger.com", "000webhostapp.com", "freewebhostmost.com"
+        ]
+        host_match = re.search(r'^https?://(?:www\.)?([^/]+)', target_url or "", re.IGNORECASE)
+        hostname = host_match.group(1).lower() if host_match else ""
+        matched_free_host = next((h for h in free_subdomain_hosts if hostname.endswith(h)), None)
+
+        if hostname:
+            if not matched_free_host:
+                pillar.checks.append(CheckResult(
+                    id="own_domain_subdomain_check",
+                    name="Own-Domain vs. Free-Subdomain Hosting",
+                    status=CheckStatus.PASS,
+                    severity=Severity.MEDIUM,
+                    score=1.0,
+                    max_score=1.0,
+                    details=f"Site is hosted on an independently-owned domain ({hostname}), not a shared free-subdomain platform.",
+                    doc_url="https://support.google.com/adsense/answer/9724"
+                ))
+                pillar.earned_score += 1.0
+            else:
+                pillar.checks.append(CheckResult(
+                    id="own_domain_subdomain_check",
+                    name="Own-Domain vs. Free-Subdomain Hosting",
+                    status=CheckStatus.WARNING,
+                    severity=Severity.MEDIUM,
+                    score=0.2,
+                    max_score=1.0,
+                    details=f"Site is hosted on a shared free-subdomain platform ({matched_free_host}). Publisher reports widely note these face materially lower AdSense approval rates.",
+                    fix_recommendation="Migrate to a fully self-owned custom domain before applying — this is one of the most commonly cited avoidable AdSense rejection causes.",
+                    doc_url="https://support.google.com/adsense/answer/9724"
+                ))
+                pillar.earned_score += 0.2
+            pillar.max_score += 1.0
 
         return pillar

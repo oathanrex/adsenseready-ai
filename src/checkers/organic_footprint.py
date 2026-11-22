@@ -67,20 +67,63 @@ class OrganicFootprintChecker:
             pillar.earned_score += 1.5
         pillar.max_score += 3.0
 
-        # 2. Schema.org / Structured Data
-        has_schema = "application/ld+json" in lower_html or "itemscope" in lower_html
-        if has_schema:
+        # 2. Schema.org / Structured Data — actually PARSE each JSON-LD block, not just
+        # check for the substring "application/ld+json". A page can contain that
+        # substring while the JSON itself is malformed (e.g. an article title with an
+        # unescaped double-quote breaks the whole block), which Google's Rich Results
+        # parser will silently reject. A pure substring check can never catch that.
+        ld_json_blocks = re.findall(
+            r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
+            homepage_html, re.IGNORECASE | re.DOTALL
+        )
+        has_itemscope = "itemscope" in lower_html
+
+        if ld_json_blocks:
+            import json as _json
+            malformed = []
+            for idx, block in enumerate(ld_json_blocks):
+                try:
+                    _json.loads(block.strip())
+                except Exception as e:
+                    malformed.append(f"block #{idx + 1}: {e}")
+
+            if not malformed:
+                pillar.checks.append(CheckResult(
+                    id="structured_data_breadcrumbs",
+                    name="Schema.org Structured Data & Rich Snippets",
+                    status=CheckStatus.PASS,
+                    severity=Severity.MEDIUM,
+                    score=2.0,
+                    max_score=2.0,
+                    details=f"{len(ld_json_blocks)} JSON-LD block(s) found and all parsed as valid JSON.",
+                    doc_url="https://developers.google.com/search/docs/appearance/structured-data/intro-structured-data"
+                ))
+                pillar.earned_score += 2.0
+            else:
+                pillar.checks.append(CheckResult(
+                    id="structured_data_breadcrumbs",
+                    name="Schema.org Structured Data & Rich Snippets",
+                    status=CheckStatus.FAIL,
+                    severity=Severity.HIGH,
+                    score=0.3,
+                    max_score=2.0,
+                    details=f"{len(malformed)} of {len(ld_json_blocks)} JSON-LD block(s) are MALFORMED and will be silently rejected by Google's structured data parser: {'; '.join(malformed[:3])}.",
+                    fix_recommendation="Properly JSON-escape any dynamic/interpolated values (titles, descriptions) injected into JSON-LD — unescaped quotes or control characters are the most common cause.",
+                    doc_url="https://developers.google.com/search/docs/appearance/structured-data/intro-structured-data"
+                ))
+                pillar.earned_score += 0.3
+        elif has_itemscope:
             pillar.checks.append(CheckResult(
                 id="structured_data_breadcrumbs",
                 name="Schema.org Structured Data & Rich Snippets",
                 status=CheckStatus.PASS,
                 severity=Severity.MEDIUM,
-                score=2.0,
+                score=1.6,
                 max_score=2.0,
-                details="Schema.org structured data (JSON-LD or microdata) detected.",
+                details="Microdata (itemscope) structured data detected (no JSON-LD present).",
                 doc_url="https://developers.google.com/search/docs/appearance/structured-data/intro-structured-data"
             ))
-            pillar.earned_score += 2.0
+            pillar.earned_score += 1.6
         else:
             pillar.checks.append(CheckResult(
                 id="structured_data_breadcrumbs",

@@ -9,12 +9,24 @@ import json
 import time
 import urllib.request
 import urllib.parse
-import urllib.error
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
 
+import urllib.error
+
 from .models import AuditReport, PillarResult, CheckResult, CheckStatus, Severity
+
+
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Disables automatic redirect-following so callers can observe the real
+    first-hop status code of a URL (urllib, like most HTTP clients' default
+    settings — e.g. `curl -L` — otherwise silently follows 3xx redirects and
+    reports the final destination's 200, hiding the fact a redirect happened
+    at all)."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
 from .checkers import (
     LegalTrustChecker,
     ContentEEATChecker,
@@ -66,16 +78,27 @@ class AdSenseAuditor:
         except Exception as e:
             return None, 0.0, str(e)
 
-    def probe_url_status(self, url: str, timeout: int = 6) -> Tuple[int, Optional[str]]:
-        """Probes URL status code and final redirected URL."""
+    def fetch_status_no_redirect(self, url: str, timeout: int = 8) -> Tuple[Optional[int], Optional[str], Optional[str]]:
+        """Returns the REAL first-hop HTTP status code without following any
+        redirect, plus the Location header if present. This exists specifically
+        to validate sitemap entries: a sitemap should list only final canonical
+        URLs. A URL that 301/302-redirects elsewhere still ends up at 200 when
+        followed (which is what fetch_url / most crawlers report), which can
+        silently hide stale/legacy/non-canonical entries sitting in a sitemap.
+        """
+        opener = urllib.request.build_opener(_NoRedirectHandler)
         req = urllib.request.Request(url, headers=self.session_headers)
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                return resp.status, resp.geturl()
+            with opener.open(req, timeout=timeout) as resp:
+                return resp.status, resp.headers.get("Location"), None
         except urllib.error.HTTPError as e:
-            return e.code, None
-        except Exception:
-            return 500, None
+            # With redirects disabled, a 3xx response surfaces as an HTTPError
+            # carrying the real status code — this is the expected path for
+            # any sitemap entry that redirects.
+            location = e.headers.get("Location") if e.headers else None
+            return e.code, location, None
+        except Exception as e:
+            return None, None, str(e)
 
     def extract_links(self, base_url: str, html: str) -> List[str]:
         """Extracts internal links from HTML."""
@@ -93,7 +116,11 @@ class AdSenseAuditor:
                 # Normalize link
                 clean_url = urllib.parse.urlunparse((parsed.scheme, parsed.netloc, parsed.path, "", "", ""))
                 found.add(clean_url)
-        return list(found)
+        # IMPORTANT: sort deterministically. Returning list(set(...)) made link order
+        # (and therefore which pages land in legal_candidates[:5] / article_candidates[:6]
+        # downstream) depend on Python's per-process randomized string hashing, so the
+        # exact same site could score differently across runs with zero site changes.
+        return sorted(found)
 
     def audit_site(
         self,
@@ -126,7 +153,7 @@ class AdSenseAuditor:
         legal_candidates = []
         article_candidates = []
 
-        legal_keywords = ["privacy", "terms", "about", "contact", "disclaimer", "legal", "cookies"]
+        legal_keywords = ["privacy", "terms", "about", "contact", "disclaimer", "legal", "cookies", "author"]
         for link in internal_links:
             lower_link = link.lower()
             if any(k in lower_link for k in legal_keywords):
@@ -135,12 +162,18 @@ class AdSenseAuditor:
                 if not any(ex in lower_link for ex in ["/category/", "/tag/", "/author/", "/page/", ".jpg", ".png", "/feed"]):
                     article_candidates.append(link)
 
-        # 3. Probe Robots.txt, Sitemap & Ads.txt
+        # 3. Probe Robots.txt & Sitemap
         robots_txt = None
         sitemap_found = False
         sitemap_url = ""
         ads_txt_content = None
-        sitemap_health = None
+        sitemap_duplicate_count = 0
+        sitemap_total_urls = 0
+        sitemap_redirect_checked = False
+        sitemap_redirect_checked_count = 0
+        sitemap_redirect_count = 0
+        sitemap_redirect_to_listed_count = 0
+        sitemap_redirect_samples: List[str] = []
 
         if not mock_html:
             target_base = target_url.rstrip("/")
@@ -158,13 +191,6 @@ class AdSenseAuditor:
                         sitemap_url = sitemap_match.group(1)
                     break
 
-            # Probe Ads.txt Authorized Digital Sellers
-            for b in probe_bases:
-                a_content, _, _ = self.fetch_url(f"{b}/ads.txt", timeout=6)
-                if a_content and "pub-" in a_content:
-                    ads_txt_content = a_content
-                    break
-
             if not sitemap_found:
                 for b in probe_bases:
                     for s_path in ["/sitemap.xml", "/sitemap_index.xml", "/wp-sitemap.xml"]:
@@ -176,32 +202,53 @@ class AdSenseAuditor:
                     if sitemap_found:
                         break
 
-            # If sitemap was discovered, extract all <loc> entries into internal_links and sample health
+            # If sitemap was discovered, extract all <loc> entries into internal_links
             if sitemap_found and sitemap_url:
                 s_body, _, _ = self.fetch_url(sitemap_url, timeout=6)
                 if s_body:
-                    loc_matches = re.findall(r"<loc>([^<]+)</loc>", s_body, re.IGNORECASE)
-                    for loc in loc_matches:
-                        clean_loc = loc.strip()
-                        if clean_loc and clean_loc not in internal_links:
+                    loc_matches = [m.strip() for m in re.findall(r"<loc>([^<]+)</loc>", s_body, re.IGNORECASE) if m.strip()]
+                    sitemap_total_urls = len(loc_matches)
+                    sitemap_duplicate_count = sitemap_total_urls - len(set(loc_matches))
+                    for clean_loc in loc_matches:
+                        if clean_loc not in internal_links:
                             internal_links.append(clean_loc)
 
-                    # Deep Sitemap Health Check: Sample up to 10 discovered URLs for 404s and 301 redirects
-                    sitemap_sample = [u for u in loc_matches if u.strip().startswith("http")][:10]
-                    if sitemap_sample:
-                        dead_404 = 0
-                        redirects = 0
-                        for s_loc in sitemap_sample:
-                            st_code, fin_url = self.probe_url_status(s_loc.strip(), timeout=5)
-                            if st_code == 404:
-                                dead_404 += 1
-                            elif fin_url and fin_url.rstrip("/") != s_loc.strip().rstrip("/"):
-                                redirects += 1
-                        sitemap_health = {
-                            "sampled_count": len(sitemap_sample),
-                            "dead_404_count": dead_404,
-                            "redirect_count": redirects
-                        }
+                    # Sitemap Canonical/Redirect Integrity: a sitemap should list ONLY
+                    # final canonical URLs. Checking with fetch_url() alone (which
+                    # follows redirects, like `curl -L`) would make a stale/legacy
+                    # URL that 301s elsewhere look like a perfectly healthy 200 —
+                    # exactly the defect class that hid 7 dead sitemap entries on a
+                    # real audited site in production. Sample URLs (capped for
+                    # runtime) and check their REAL first-hop status.
+                    unique_sitemap_urls = list(dict.fromkeys(loc_matches))
+                    sitemap_url_norm_set = {u.rstrip("/") for u in unique_sitemap_urls}
+                    MAX_REDIRECT_CHECKS = 40
+                    sample_pool = unique_sitemap_urls
+                    if len(sample_pool) > MAX_REDIRECT_CHECKS:
+                        step = max(1, len(sample_pool) // MAX_REDIRECT_CHECKS)
+                        sample_pool = sample_pool[::step][:MAX_REDIRECT_CHECKS]
+
+                    sitemap_redirect_checked = True
+                    for u in sample_pool:
+                        status, location, _err = self.fetch_status_no_redirect(u, timeout=6)
+                        sitemap_redirect_checked_count += 1
+                        if status is not None and 300 <= status < 400:
+                            sitemap_redirect_count += 1
+                            target = location or "(no Location header)"
+                            target_abs = urllib.parse.urljoin(u, target) if location else target
+                            is_dup = target_abs.rstrip("/") in sitemap_url_norm_set
+                            if is_dup:
+                                sitemap_redirect_to_listed_count += 1
+                            if len(sitemap_redirect_samples) < 6:
+                                tag = " [target ALSO separately listed in sitemap]" if is_dup else ""
+                                sitemap_redirect_samples.append(f"{u} -> HTTP {status} -> {target_abs}{tag}")
+
+            # Fetch ads.txt (independent of robots.txt / sitemap outcome)
+            for b in probe_bases:
+                ads_body, _, _ = self.fetch_url(f"{b}/ads.txt", timeout=6)
+                if ads_body and ("DIRECT" in ads_body.upper() or "RESELLER" in ads_body.upper()):
+                    ads_txt_content = ads_body
+                    break
 
             # Re-categorize legal and article candidates with discovered sitemap links
             for link in internal_links:
@@ -217,17 +264,11 @@ class AdSenseAuditor:
             robots_txt = "User-agent: *\nAllow: /\nUser-agent: Mediapartners-Google\nAllow: /"
             sitemap_found = True
             sitemap_url = f"{origin}/sitemap.xml"
-            ads_txt_content = "google.com, pub-1234567890123456, DIRECT, f08c47fec0942fa0"
-            sitemap_health = {
-                "sampled_count": 5,
-                "dead_404_count": 0,
-                "redirect_count": 0
-            }
 
         # 4. Crawl Sample Legal Pages & Articles
         crawled_pages = {"homepage": homepage_html}
 
-        if not mock_html and target_url.startswith("http") and (legal_candidates or article_candidates):
+        if target_url.startswith("http") and (legal_candidates or article_candidates):
             for l_url in legal_candidates[:5]:
                 content, _, _ = self.fetch_url(l_url, timeout=6)
                 if content:
@@ -256,17 +297,22 @@ class AdSenseAuditor:
         p1 = LegalTrustChecker(self.rules).run(target_url, homepage_html, crawled_pages)
         p2 = ContentEEATChecker(self.rules).run(article_candidates, sample_articles, is_web_app=is_app)
         p3 = TechSEOChecker(self.rules).run(
-            target_url,
-            homepage_html,
-            robots_txt,
-            sitemap_found,
-            sitemap_url,
-            latency,
+            target_url, homepage_html, robots_txt, sitemap_found, sitemap_url, latency,
             ads_txt=ads_txt_content,
-            sitemap_health=sitemap_health
+            sitemap_duplicate_count=sitemap_duplicate_count,
+            sitemap_total_urls=sitemap_total_urls,
+            ads_txt_checked=not bool(mock_html),
+            sitemap_redirect_checked=sitemap_redirect_checked,
+            sitemap_redirect_checked_count=sitemap_redirect_checked_count,
+            sitemap_redirect_count=sitemap_redirect_count,
+            sitemap_redirect_to_listed_count=sitemap_redirect_to_listed_count,
+            sitemap_redirect_samples=sitemap_redirect_samples
         )
-        p4 = SiteStructureChecker(self.rules).run(homepage_html, crawled_pages, internal_links)
-        p5 = PolicyProhibitedChecker(self.rules).run(homepage_html, crawled_pages)
+        p4 = SiteStructureChecker(self.rules).run(
+            homepage_html, crawled_pages, internal_links,
+            fetcher=self.fetch_url
+        )
+        p5 = PolicyProhibitedChecker(self.rules).run(homepage_html, crawled_pages, target_url=target_url)
         p6 = AdLayoutChecker(self.rules).run(homepage_html)
         p7 = OrganicFootprintChecker(self.rules).run(homepage_html)
 
@@ -282,6 +328,14 @@ class AdSenseAuditor:
 
         # 6. Detect CMS Platform & Web App Nature
         cms_data = CMSDetector.detect(homepage_html)
+        # Evidence-based filter: drop the generic AdSense meta-tag tip if that tag
+        # is already present in the fetched HTML (previously this tip was shown
+        # unconditionally regardless of whether the site already had it).
+        has_adsense_meta = bool(re.search(r'<meta[^>]+name=["\']google-adsense-account["\']', homepage_html, re.IGNORECASE))
+        if has_adsense_meta and cms_data.get("customized_tips"):
+            cms_data["customized_tips"] = [
+                t for t in cms_data["customized_tips"] if "google-adsense-account" not in t
+            ]
         
         # Check if site is an interactive web app / SaaS utility
         web_app_data = None
@@ -293,8 +347,21 @@ class AdSenseAuditor:
         lexical_data = UniquenessAnalyzer.evaluate(all_text)
 
         # 8. Aggregate Composite Scores
-        total_score = sum(p.earned_score for p in pillars.values())
-        max_possible = sum(p.max_score for p in pillars.values())
+        # IMPORTANT FIX: this used to be a flat sum of every check's raw points
+        # across all pillars, completely ignoring `pillar.weight`. The README
+        # advertises "Legal & Trust 20%, Content/EEAT 25%, ..." but that
+        # percentage was never actually applied anywhere in the scoring math —
+        # a pillar's real influence on the headline score depended purely on
+        # how many points its individual checks happened to add up to, which
+        # also meant every time a new check was added to a pillar, ALL of that
+        # pillar's other checks had to be manually re-scored to keep the total
+        # matching its stated weight (fragile and easy to silently break).
+        # Fix: normalize each pillar to its own percentage first, then combine
+        # using its declared weight, so the stated 7-pillar weighting is real.
+        total_weight = sum(p.weight for p in pillars.values()) or 100.0
+        weighted_points = sum(p.percentage * p.weight for p in pillars.values()) / 100.0
+        total_score = round(weighted_points, 2)
+        max_possible = round(total_weight, 2)
         normalized_score = round((total_score / max_possible) * 100, 1) if max_possible > 0 else 0
 
         # Gather Blockers & High Severity Issues

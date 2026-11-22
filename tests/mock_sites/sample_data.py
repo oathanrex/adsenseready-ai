@@ -10,6 +10,7 @@ READY_SITE_HTML = """<!DOCTYPE html>
     <title>Tech Insights Daily - Engineering & Cloud Architecture</title>
     <meta name="description" content="In-depth tutorials, system design breakdowns, and cloud engineering best practices.">
     <link rel="canonical" href="https://demotechjournal.com/">
+    <meta name="google-adsense-account" content="ca-pub-1234567890123456">
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -18,6 +19,7 @@ READY_SITE_HTML = """<!DOCTYPE html>
       "url": "https://demotechjournal.com"
     }
     </script>
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1234567890123456" crossorigin="anonymous"></script>
 </head>
 <body>
     <header>

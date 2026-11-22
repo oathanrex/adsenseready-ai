@@ -196,11 +196,36 @@ class ContentEEATChecker:
             r"in summary, it's clear that"
         ]
 
+        # Authority-domain outbound links and freshness-signal detection. These two
+        # checks generalize the single biggest gaps found in a real-world manual
+        # AdSense-readiness audit: guides citing bare numbers/specs with no
+        # verifiable primary source, and no visible "last updated/verified" signal
+        # that tells a reviewer (or Google) the content isn't stale.
+        citation_domain_pattern = re.compile(
+            r'href=["\']https?://(?:[\w-]+\.)*(gov(?:\.[a-z]{2})?|nic\.in|iso\.org|who\.int|'
+            r'europa\.eu|un\.org|w3\.org|usa\.gov|state\.gov|icao\.int|[\w-]+\.edu)(?:[/"\']|$)',
+            re.IGNORECASE
+        )
+        freshness_pattern = re.compile(
+            r'(last[\s-]?updated|last[\s-]?verified|updated\s*on|date\s*modified|datemodified)',
+            re.IGNORECASE
+        )
+        articles_with_citation = 0
+        articles_with_freshness = 0
+
         for url, html in article_pages.items():
             plain_text = self.extract_main_text(html)
             words = plain_text.split()
             word_count = len(words)
             word_counts.append(word_count)
+
+            # Primary-source / authority citation outbound link
+            if citation_domain_pattern.search(html):
+                articles_with_citation += 1
+
+            # Freshness signal (visible "last updated" text, or dateModified in markup)
+            if freshness_pattern.search(html) or re.search(r'<time[^>]+datetime=', html, re.IGNORECASE) or "datemodified" in html.lower():
+                articles_with_freshness += 1
 
             # Readability
             if word_count > 50:
@@ -429,5 +454,120 @@ class ContentEEATChecker:
             ))
             pillar.earned_score += 1.0
         pillar.max_score += 2.0
+
+        # 8. Primary-Source / Authoritative Citation Links
+        # Numbers alone ("140x60px", "20-300KB") read as unverifiable claims to
+        # both human reviewers and Google's helpful-content systems. Linking out
+        # to the actual government/standards-body source (.gov, ISO, WHO, an
+        # official notification PDF, etc.) is a direct, checkable E-E-A-T signal
+        # that a plain keyword/number scan can never detect on its own.
+        if article_pages:
+            citation_ratio = articles_with_citation / len(article_pages)
+            if citation_ratio >= 0.5:
+                pillar.checks.append(CheckResult(
+                    id="primary_source_citations",
+                    name="Primary-Source Regulatory / Authority Citations",
+                    status=CheckStatus.PASS,
+                    severity=Severity.MEDIUM,
+                    score=3.0,
+                    max_score=3.0,
+                    details=f"{articles_with_citation}/{len(article_pages)} sampled articles link out to a recognizable primary-source/authority domain (.gov, ISO, WHO, .edu, etc.).",
+                    doc_url="https://developers.google.com/search/docs/fundamentals/creating-helpful-content"
+                ))
+                pillar.earned_score += 3.0
+            elif citation_ratio > 0:
+                pillar.checks.append(CheckResult(
+                    id="primary_source_citations",
+                    name="Primary-Source Regulatory / Authority Citations",
+                    status=CheckStatus.WARNING,
+                    severity=Severity.MEDIUM,
+                    score=1.5,
+                    max_score=3.0,
+                    details=f"Only {articles_with_citation}/{len(article_pages)} sampled articles link to a primary-source/authority domain.",
+                    fix_recommendation="For claims citing specific rules, sizes, or legal limits, link directly to the issuing authority's official page/notification (e.g. a .gov domain, ISO/WHO standard, or regulator circular) rather than stating the number alone.",
+                    doc_url="https://developers.google.com/search/docs/fundamentals/creating-helpful-content"
+                ))
+                pillar.earned_score += 1.5
+            else:
+                pillar.checks.append(CheckResult(
+                    id="primary_source_citations",
+                    name="Primary-Source Regulatory / Authority Citations",
+                    status=CheckStatus.FAIL,
+                    severity=Severity.MEDIUM,
+                    score=0.0,
+                    max_score=3.0,
+                    details="None of the sampled articles link out to a recognizable primary-source/authority domain.",
+                    fix_recommendation="Add outbound citation links to official government/standards-body sources for any rule, size, or legal limit the content states as fact.",
+                    doc_url="https://developers.google.com/search/docs/fundamentals/creating-helpful-content"
+                ))
+            pillar.max_score += 3.0
+        else:
+            pillar.checks.append(CheckResult(
+                id="primary_source_citations",
+                name="Primary-Source Regulatory / Authority Citations",
+                status=CheckStatus.SKIPPED,
+                severity=Severity.MEDIUM,
+                score=0.0,
+                max_score=0.0,
+                details="No crawled article content available to check for citations.",
+                doc_url="https://developers.google.com/search/docs/fundamentals/creating-helpful-content"
+            ))
+
+        # 9. Content Freshness Signal (Last Updated / dateModified)
+        # Google has repeatedly said content freshness/recency is a quality
+        # signal, and stale-looking pages with no visible update date are a
+        # common soft reason for "low value content" rejections even when word
+        # count and originality are both fine.
+        if article_pages:
+            freshness_ratio = articles_with_freshness / len(article_pages)
+            if freshness_ratio >= 0.6:
+                pillar.checks.append(CheckResult(
+                    id="content_freshness_signal",
+                    name="Content Freshness Signal (Last Updated / dateModified)",
+                    status=CheckStatus.PASS,
+                    severity=Severity.LOW,
+                    score=2.0,
+                    max_score=2.0,
+                    details=f"{articles_with_freshness}/{len(article_pages)} sampled articles show a visible freshness signal (last updated/verified text, <time datetime>, or dateModified).",
+                    doc_url="https://developers.google.com/search/docs/fundamentals/creating-helpful-content"
+                ))
+                pillar.earned_score += 2.0
+            elif freshness_ratio > 0:
+                pillar.checks.append(CheckResult(
+                    id="content_freshness_signal",
+                    name="Content Freshness Signal (Last Updated / dateModified)",
+                    status=CheckStatus.WARNING,
+                    severity=Severity.LOW,
+                    score=1.0,
+                    max_score=2.0,
+                    details=f"Only {articles_with_freshness}/{len(article_pages)} sampled articles show a freshness signal.",
+                    fix_recommendation="Add a visible 'Last updated: <date>' line (and/or dateModified in JSON-LD) to every article.",
+                    doc_url="https://developers.google.com/search/docs/fundamentals/creating-helpful-content"
+                ))
+                pillar.earned_score += 1.0
+            else:
+                pillar.checks.append(CheckResult(
+                    id="content_freshness_signal",
+                    name="Content Freshness Signal (Last Updated / dateModified)",
+                    status=CheckStatus.FAIL,
+                    severity=Severity.LOW,
+                    score=0.0,
+                    max_score=2.0,
+                    details="No sampled article shows any visible freshness/last-updated signal.",
+                    fix_recommendation="Add a visible 'Last updated: <date>' line and/or dateModified JSON-LD to each article so reviewers and Google can see the content is actively maintained.",
+                    doc_url="https://developers.google.com/search/docs/fundamentals/creating-helpful-content"
+                ))
+            pillar.max_score += 2.0
+        else:
+            pillar.checks.append(CheckResult(
+                id="content_freshness_signal",
+                name="Content Freshness Signal (Last Updated / dateModified)",
+                status=CheckStatus.SKIPPED,
+                severity=Severity.LOW,
+                score=0.0,
+                max_score=0.0,
+                details="No crawled article content available to check for freshness signals.",
+                doc_url="https://developers.google.com/search/docs/fundamentals/creating-helpful-content"
+            ))
 
         return pillar

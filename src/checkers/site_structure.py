@@ -3,7 +3,7 @@ Pillar 4: Site Navigation, Architecture & UX Checker
 """
 
 import re
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional, Callable, Tuple
 from ..models import PillarResult, CheckResult, CheckStatus, Severity
 
 
@@ -12,7 +12,13 @@ class SiteStructureChecker:
         self.rules = rules.get("pillars", {}).get("site_navigation_ux", {})
         self.weight = self.rules.get("weight", 15)
 
-    def run(self, homepage_html: str, crawled_pages: Dict[str, str], internal_links: List[str]) -> PillarResult:
+    def run(
+        self,
+        homepage_html: str,
+        crawled_pages: Dict[str, str],
+        internal_links: List[str],
+        fetcher: Optional[Callable[..., Tuple[Optional[str], float, Optional[str]]]] = None
+    ) -> PillarResult:
         pillar = PillarResult(
             id="site_navigation_ux",
             name="Site Navigation, Architecture & UX",
@@ -34,25 +40,25 @@ class SiteStructureChecker:
                 name="Clear Header Navigation Menu",
                 status=CheckStatus.PASS,
                 severity=Severity.BLOCKER,
-                score=4.0,
-                max_score=4.0,
+                score=5.0,
+                max_score=5.0,
                 details=f"Intuitive navigation bar detected with {menu_links_count} discovered navigational links.",
                 doc_url="https://support.google.com/adsense/answer/10502938"
             ))
-            pillar.earned_score += 4.0
+            pillar.earned_score += 5.0
         elif menu_links_count >= 3:
             pillar.checks.append(CheckResult(
                 id="primary_navigation_menu",
                 name="Clear Header Navigation Menu",
                 status=CheckStatus.WARNING,
                 severity=Severity.HIGH,
-                score=2.5,
-                max_score=4.0,
+                score=3.0,
+                max_score=5.0,
                 details=f"Limited navigation options found ({menu_links_count} links). May trigger navigation ambiguity.",
                 fix_recommendation="Expand top header menu with clear category tabs, topics, and search.",
                 doc_url="https://support.google.com/adsense/answer/10502938"
             ))
-            pillar.earned_score += 2.5
+            pillar.earned_score += 3.0
         else:
             pillar.checks.append(CheckResult(
                 id="primary_navigation_menu",
@@ -60,12 +66,12 @@ class SiteStructureChecker:
                 status=CheckStatus.FAIL,
                 severity=Severity.BLOCKER,
                 score=0.0,
-                max_score=4.0,
+                max_score=5.0,
                 details="No standard header navigation menu or taxonomy links detected.",
                 fix_recommendation="Implement an accessible primary navigation menu with categories, about, and search.",
                 doc_url="https://support.google.com/adsense/answer/10502938"
             ))
-        pillar.max_score += 4.0
+        pillar.max_score += 5.0
 
         # 2. Editorial Content Header Prominence (Anti-Buried Content Check)
         header_match = re.search(r"<(header|nav)[^>]*>[\s\S]*?</\1>", homepage_html, re.IGNORECASE)
@@ -93,8 +99,8 @@ class SiteStructureChecker:
                 severity=Severity.HIGH,
                 score=1.5,
                 max_score=3.0,
-                details="Editorial guides exist on site but are NOT visibly linked in the primary header/nav (likely buried in footer). Human AdSense reviewers who skim in 30 seconds may miss your content and flag 'Insufficient Content'.",
-                fix_recommendation="Promote 'Blog' or 'Guides' into the top header navigation pill/menu bar.",
+                details="Editorial content (Blog/Articles) exists on the site but is absent from the primary header navigation menu. Buried blog links trigger AdSense 'Valueless Site Architecture' rejections.",
+                fix_recommendation="Prominently place a direct 'Blog' or 'Guides' link inside your top header <nav> element so human reviewers can immediately find your editorial repository.",
                 doc_url="https://support.google.com/adsense/answer/10502938"
             ))
             pillar.earned_score += 1.5
@@ -102,17 +108,17 @@ class SiteStructureChecker:
             pillar.checks.append(CheckResult(
                 id="editorial_header_prominence",
                 name="Editorial Content Header Prominence",
-                status=CheckStatus.PASS,
-                severity=Severity.HIGH,
-                score=3.0,
+                status=CheckStatus.FAIL,
+                severity=Severity.BLOCKER,
+                score=0.0,
                 max_score=3.0,
-                details="Standard navigation structure detected.",
+                details="No editorial content, blog, or technical guides detected in navigation or internal links.",
+                fix_recommendation="Create and prominently link an editorial blog repository containing at least 25-30 comprehensive original articles.",
                 doc_url="https://support.google.com/adsense/answer/10502938"
             ))
-            pillar.earned_score += 3.0
         pillar.max_score += 3.0
 
-        # 3. Footer Navigation Links
+        # 2. Footer Navigation Links
         has_footer = "<footer" in lower_html or 'id="footer"' in lower_html or 'class="footer"' in lower_html
         if has_footer:
             pillar.checks.append(CheckResult(
@@ -141,38 +147,105 @@ class SiteStructureChecker:
             pillar.earned_score += 1.0
         pillar.max_score += 3.0
 
-        # 4. Dead Links / Hash Placeholders
+        # 3. Dead Links / Hash Placeholders + REAL HTTP-sampled broken-link / soft-404 check.
+        # Previously this check (misleadingly named "zero_broken_links_or_404s") never made
+        # a single network request: it only counted literal href="#" placeholders in the raw
+        # HTML. A sitemap full of genuinely dead/duplicate/404-returning URLs would always
+        # pass. If a `fetcher` is supplied, sample real internal URLs (spread across the full
+        # list, not just the first few) and actually fetch them.
         dead_hashes = len(re.findall(r'href=["\']#["\']', lower_html))
         dead_hash_ratio = (dead_hashes / menu_links_count) if menu_links_count > 0 else 0
 
-        if dead_hash_ratio <= 0.15:
+        http_checked_count = 0
+        http_broken_count = 0
+        broken_samples: List[str] = []
+
+        if fetcher and internal_links:
+            pool = [l for l in internal_links if l.startswith("http")]
+            sample_size = min(12, len(pool))
+            if sample_size > 0:
+                step = max(1, len(pool) // sample_size)
+                sample = pool[::step][:sample_size]
+                for link in sample:
+                    content_fetched, _, err = fetcher(link, timeout=6)
+                    http_checked_count += 1
+                    if content_fetched is None:
+                        http_broken_count += 1
+                        broken_samples.append(f"{link} ({err})")
+                    elif len(content_fetched) < 3000 and re.search(r"page not found|404 error|error 404", content_fetched, re.IGNORECASE):
+                        http_broken_count += 1
+                        broken_samples.append(f"{link} (soft-404: returns 200 but renders an error page)")
+
+        if http_checked_count > 0:
+            broken_ratio = http_broken_count / http_checked_count
+            if http_broken_count == 0 and dead_hash_ratio <= 0.15:
+                pillar.checks.append(CheckResult(
+                    id="zero_broken_links_or_404s",
+                    name="Absence of Broken / Placeholder Links",
+                    status=CheckStatus.PASS,
+                    severity=Severity.HIGH,
+                    score=4.0,
+                    max_score=4.0,
+                    details=f"Live-fetched {http_checked_count} sampled internal URLs, 0 broken/soft-404 found ({dead_hashes} empty '#' hash links found in nav).",
+                    doc_url="https://support.google.com/adsense/answer/10502938"
+                ))
+                pillar.earned_score += 4.0
+            elif broken_ratio <= 0.2:
+                pillar.checks.append(CheckResult(
+                    id="zero_broken_links_or_404s",
+                    name="Absence of Broken / Placeholder Links",
+                    status=CheckStatus.WARNING,
+                    severity=Severity.HIGH,
+                    score=2.5,
+                    max_score=4.0,
+                    details=f"Live-fetched {http_checked_count} sampled internal URLs: {http_broken_count} broken/soft-404 ({broken_ratio*100:.0f}%). Examples: {'; '.join(broken_samples[:3]) if broken_samples else 'n/a'}.",
+                    fix_recommendation="Fix or remove the broken/soft-404 URLs found; audit your full sitemap for dead links, not just the ones sampled here.",
+                    doc_url="https://support.google.com/adsense/answer/10502938"
+                ))
+                pillar.earned_score += 2.5
+            else:
+                pillar.checks.append(CheckResult(
+                    id="zero_broken_links_or_404s",
+                    name="Absence of Broken / Placeholder Links",
+                    status=CheckStatus.FAIL,
+                    severity=Severity.HIGH,
+                    score=0.5,
+                    max_score=4.0,
+                    details=f"Live-fetched {http_checked_count} sampled internal URLs: {http_broken_count} broken/soft-404 ({broken_ratio*100:.0f}%). Examples: {'; '.join(broken_samples[:3]) if broken_samples else 'n/a'}.",
+                    fix_recommendation="A high proportion of sampled URLs are broken. Audit your sitemap and internal links for dead/duplicate entries before resubmitting.",
+                    doc_url="https://support.google.com/adsense/answer/10502938"
+                ))
+                pillar.earned_score += 0.5
+        elif dead_hash_ratio <= 0.15:
+            # Fallback when no fetcher is supplied (e.g. offline/mock audits): keep the
+            # original heuristic, but label it honestly as a partial signal.
             pillar.checks.append(CheckResult(
                 id="zero_broken_links_or_404s",
-                name="Absence of Broken / Placeholder Links",
+                name="Absence of Broken / Placeholder Links (static heuristic only)",
                 status=CheckStatus.PASS,
                 severity=Severity.HIGH,
-                score=3.0,
-                max_score=3.0,
-                details=f"Navigation links are functional ({dead_hashes} empty '#' hash links found).",
+                score=4.0,
+                max_score=4.0,
+                details=f"No live HTTP sampling performed (no fetcher supplied); static heuristic found only {dead_hashes} empty '#' hash links. This does NOT confirm the absence of real broken/404 URLs.",
                 doc_url="https://support.google.com/adsense/answer/10502938"
             ))
-            pillar.earned_score += 3.0
+            pillar.earned_score += 4.0
         else:
             pillar.checks.append(CheckResult(
                 id="zero_broken_links_or_404s",
-                name="Absence of Broken / Placeholder Links",
+                name="Absence of Broken / Placeholder Links (static heuristic only)",
                 status=CheckStatus.FAIL,
                 severity=Severity.HIGH,
                 score=1.0,
-                max_score=3.0,
+                max_score=4.0,
                 details=f"High quantity of placeholder '#' links detected ({dead_hashes} found). Triggers 'Site Under Construction'.",
                 fix_recommendation="Replace dummy '#' links in menus and buttons with actual live destination URLs.",
                 doc_url="https://support.google.com/adsense/answer/10502938"
             ))
             pillar.earned_score += 1.0
-        pillar.max_score += 3.0
+        pillar.max_score += 4.0
 
-        # 5. Zero Placeholder / Coming Soon Pages
+        # 4. Zero Placeholder / Coming Soon Pages
         all_text = " ".join(crawled_pages.values()).lower()
         banned_placeholders = ["under construction", "coming soon", "sample page", "hello world!", "default demo content"]
         found_placeholders = [p for p in banned_placeholders if p in all_text or p in lower_html]
@@ -183,12 +256,12 @@ class SiteStructureChecker:
                 name="Zero 'Under Construction' or Demo Content",
                 status=CheckStatus.PASS,
                 severity=Severity.BLOCKER,
-                score=2.0,
-                max_score=2.0,
+                score=3.0,
+                max_score=3.0,
                 details="Site is fully launched. No demo, placeholder, or 'coming soon' markers detected.",
                 doc_url="https://support.google.com/adsense/answer/10502938"
             ))
-            pillar.earned_score += 2.0
+            pillar.earned_score += 3.0
         else:
             pillar.checks.append(CheckResult(
                 id="zero_placeholder_pages",
@@ -196,11 +269,11 @@ class SiteStructureChecker:
                 status=CheckStatus.FAIL,
                 severity=Severity.BLOCKER,
                 score=0.0,
-                max_score=2.0,
+                max_score=3.0,
                 details=f"Detected demo/placeholder content: {', '.join(found_placeholders)}.",
                 fix_recommendation="Delete all demo WordPress posts (like 'Hello World!'), default pages, and remove any 'Under Construction' banners.",
                 doc_url="https://support.google.com/adsense/answer/10502938"
             ))
-        pillar.max_score += 2.0
+        pillar.max_score += 3.0
 
         return pillar
