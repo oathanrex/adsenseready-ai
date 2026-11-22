@@ -100,6 +100,52 @@ class AdSenseAuditor:
         except Exception as e:
             return None, None, str(e)
 
+    # Link classification used to build the E-E-A-T content-sample pool.
+    # Previously only ".jpg"/".png" were excluded from "article_candidates",
+    # so on sites whose homepage nav links to CSS files, locale-root pages
+    # (e.g. /ar/, /hi/), or a bare "/blog/" index before any real article,
+    # the first-6-links sample used for citation/freshness/word-count checks
+    # could end up containing ZERO actual articles — silently producing a
+    # misleadingly low E-E-A-T score even when every real article page is
+    # fully compliant (confirmed live on a Web-App + blog hybrid site).
+    _ASSET_EXTENSIONS = (
+        ".css", ".js", ".mjs", ".json", ".xml", ".webp", ".svg", ".ico",
+        ".woff", ".woff2", ".ttf", ".eot", ".mp4", ".webm", ".mp3",
+        ".jpg", ".jpeg", ".png", ".gif", ".pdf", ".zip", ".txt"
+    )
+    _NON_ARTICLE_PATH_SEGMENTS = ("/category/", "/tag/", "/author/", "/page/", "/feed")
+    _BARE_LISTING_NAMES = {"blog", "articles", "guides", "news", "posts", "resources", "updates"}
+    _CONTENT_DIR_SEGMENTS = ("/blog/", "/article/", "/articles/", "/post/", "/posts/", "/guide/", "/guides/", "/news/")
+
+    def _is_excluded_from_articles(self, link: str, target_base: str) -> bool:
+        """True if `link` should NOT be treated as a candidate article page
+        (homepage itself, static assets, bare listing/locale index pages,
+        or already-excluded navigational sections)."""
+        lower_link = link.lower()
+        if link.rstrip("/") == target_base.rstrip("/"):
+            return True
+        if any(lower_link.endswith(ext) for ext in self._ASSET_EXTENSIONS):
+            return True
+        if any(seg in lower_link for seg in self._NON_ARTICLE_PATH_SEGMENTS):
+            return True
+        path_segments = [s for s in urllib.parse.urlparse(link).path.split("/") if s]
+        if not path_segments:
+            return True
+        if len(path_segments) == 1:
+            seg0 = path_segments[0].lower()
+            if seg0 in self._BARE_LISTING_NAMES:
+                return True
+            if re.fullmatch(r"[a-z]{2}(-[a-z]{2})?", seg0):
+                return True
+        return False
+
+    def _article_sort_key(self, link: str) -> tuple:
+        """Sort real content-directory URLs (e.g. '/blog/some-slug') ahead of
+        other surviving links, so a small sample slice favors actual articles
+        over incidental tool/landing pages when both are mixed together."""
+        is_content_dir = any(seg in link.lower() for seg in self._CONTENT_DIR_SEGMENTS)
+        return (0 if is_content_dir else 1, link)
+
     def extract_links(self, base_url: str, html: str) -> List[str]:
         """Extracts internal links from HTML."""
         found = set()
@@ -136,6 +182,7 @@ class AdSenseAuditor:
 
         parsed_url = urllib.parse.urlparse(target_url)
         origin = f"{parsed_url.scheme}://{parsed_url.netloc}"
+        target_base = target_url.rstrip("/")
 
         # 1. Fetch Homepage
         if mock_html:
@@ -159,7 +206,7 @@ class AdSenseAuditor:
             if any(k in lower_link for k in legal_keywords):
                 legal_candidates.append(link)
             else:
-                if not any(ex in lower_link for ex in ["/category/", "/tag/", "/author/", "/page/", ".jpg", ".png", "/feed"]):
+                if not self._is_excluded_from_articles(link, target_base):
                     article_candidates.append(link)
 
         # 3. Probe Robots.txt & Sitemap
@@ -257,9 +304,16 @@ class AdSenseAuditor:
                     if link not in legal_candidates:
                         legal_candidates.append(link)
                 else:
-                    if not any(ex in lower_link for ex in ["/category/", "/tag/", "/author/", "/page/", ".jpg", ".png", "/feed"]):
-                        if link not in article_candidates and link.rstrip("/") != target_base and not link.rstrip("/").endswith("/guides"):
+                    if not self._is_excluded_from_articles(link, target_base):
+                        if link not in article_candidates and not link.rstrip("/").endswith("/guides"):
                             article_candidates.append(link)
+
+            # Favor real content-directory URLs (e.g. '/blog/some-slug') over
+            # incidental tool/landing pages so the small [:6] sample used for
+            # E-E-A-T checks (citations, freshness, word count) actually
+            # reflects the site's long-form articles rather than whatever
+            # happened to appear first in homepage nav order.
+            article_candidates = sorted(article_candidates, key=self._article_sort_key)
         else:
             robots_txt = "User-agent: *\nAllow: /\nUser-agent: Mediapartners-Google\nAllow: /"
             sitemap_found = True
