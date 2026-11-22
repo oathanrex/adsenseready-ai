@@ -34,25 +34,25 @@ class SiteStructureChecker:
                 name="Clear Header Navigation Menu",
                 status=CheckStatus.PASS,
                 severity=Severity.BLOCKER,
-                score=5.0,
-                max_score=5.0,
+                score=4.0,
+                max_score=4.0,
                 details=f"Intuitive navigation bar detected with {menu_links_count} discovered navigational links.",
                 doc_url="https://support.google.com/adsense/answer/10502938"
             ))
-            pillar.earned_score += 5.0
+            pillar.earned_score += 4.0
         elif menu_links_count >= 3:
             pillar.checks.append(CheckResult(
                 id="primary_navigation_menu",
                 name="Clear Header Navigation Menu",
                 status=CheckStatus.WARNING,
                 severity=Severity.HIGH,
-                score=3.0,
-                max_score=5.0,
+                score=2.5,
+                max_score=4.0,
                 details=f"Limited navigation options found ({menu_links_count} links). May trigger navigation ambiguity.",
                 fix_recommendation="Expand top header menu with clear category tabs, topics, and search.",
                 doc_url="https://support.google.com/adsense/answer/10502938"
             ))
-            pillar.earned_score += 3.0
+            pillar.earned_score += 2.5
         else:
             pillar.checks.append(CheckResult(
                 id="primary_navigation_menu",
@@ -60,14 +60,59 @@ class SiteStructureChecker:
                 status=CheckStatus.FAIL,
                 severity=Severity.BLOCKER,
                 score=0.0,
-                max_score=5.0,
+                max_score=4.0,
                 details="No standard header navigation menu or taxonomy links detected.",
                 fix_recommendation="Implement an accessible primary navigation menu with categories, about, and search.",
                 doc_url="https://support.google.com/adsense/answer/10502938"
             ))
-        pillar.max_score += 5.0
+        pillar.max_score += 4.0
 
-        # 2. Footer Navigation Links
+        # 2. Editorial Content Header Prominence (Anti-Buried Content Check)
+        header_match = re.search(r"<(header|nav)[^>]*>[\s\S]*?</\1>", homepage_html, re.IGNORECASE)
+        header_text = header_match.group(0).lower() if header_match else lower_html[:1500]
+        has_blog_in_header = any(k in header_text for k in ["/blog", "/guide", "/article", "/tutorial", "blog", "guides", "articles"])
+        has_blog_on_site = any(any(k in l.lower() for k in ["/blog", "/guide", "/article"]) for l in internal_links)
+
+        if has_blog_in_header:
+            pillar.checks.append(CheckResult(
+                id="editorial_header_prominence",
+                name="Editorial Content Header Prominence",
+                status=CheckStatus.PASS,
+                severity=Severity.HIGH,
+                score=3.0,
+                max_score=3.0,
+                details="Blog, Guides, or Article repository is prominently exposed in primary header navigation.",
+                doc_url="https://support.google.com/adsense/answer/10502938"
+            ))
+            pillar.earned_score += 3.0
+        elif has_blog_on_site:
+            pillar.checks.append(CheckResult(
+                id="editorial_header_prominence",
+                name="Editorial Content Header Prominence",
+                status=CheckStatus.WARNING,
+                severity=Severity.HIGH,
+                score=1.5,
+                max_score=3.0,
+                details="Editorial guides exist on site but are NOT visibly linked in the primary header/nav (likely buried in footer). Human AdSense reviewers who skim in 30 seconds may miss your content and flag 'Insufficient Content'.",
+                fix_recommendation="Promote 'Blog' or 'Guides' into the top header navigation pill/menu bar.",
+                doc_url="https://support.google.com/adsense/answer/10502938"
+            ))
+            pillar.earned_score += 1.5
+        else:
+            pillar.checks.append(CheckResult(
+                id="editorial_header_prominence",
+                name="Editorial Content Header Prominence",
+                status=CheckStatus.PASS,
+                severity=Severity.HIGH,
+                score=3.0,
+                max_score=3.0,
+                details="Standard navigation structure detected.",
+                doc_url="https://support.google.com/adsense/answer/10502938"
+            ))
+            pillar.earned_score += 3.0
+        pillar.max_score += 3.0
+
+        # 3. Footer Navigation Links
         has_footer = "<footer" in lower_html or 'id="footer"' in lower_html or 'class="footer"' in lower_html
         if has_footer:
             pillar.checks.append(CheckResult(
@@ -96,7 +141,7 @@ class SiteStructureChecker:
             pillar.earned_score += 1.0
         pillar.max_score += 3.0
 
-        # 3. Dead Links / Hash Placeholders
+        # 4. Dead Links / Hash Placeholders
         dead_hashes = len(re.findall(r'href=["\']#["\']', lower_html))
         dead_hash_ratio = (dead_hashes / menu_links_count) if menu_links_count > 0 else 0
 
@@ -106,12 +151,12 @@ class SiteStructureChecker:
                 name="Absence of Broken / Placeholder Links",
                 status=CheckStatus.PASS,
                 severity=Severity.HIGH,
-                score=4.0,
-                max_score=4.0,
+                score=3.0,
+                max_score=3.0,
                 details=f"Navigation links are functional ({dead_hashes} empty '#' hash links found).",
                 doc_url="https://support.google.com/adsense/answer/10502938"
             ))
-            pillar.earned_score += 4.0
+            pillar.earned_score += 3.0
         else:
             pillar.checks.append(CheckResult(
                 id="zero_broken_links_or_404s",
@@ -119,15 +164,15 @@ class SiteStructureChecker:
                 status=CheckStatus.FAIL,
                 severity=Severity.HIGH,
                 score=1.0,
-                max_score=4.0,
+                max_score=3.0,
                 details=f"High quantity of placeholder '#' links detected ({dead_hashes} found). Triggers 'Site Under Construction'.",
                 fix_recommendation="Replace dummy '#' links in menus and buttons with actual live destination URLs.",
                 doc_url="https://support.google.com/adsense/answer/10502938"
             ))
             pillar.earned_score += 1.0
-        pillar.max_score += 4.0
+        pillar.max_score += 3.0
 
-        # 4. Zero Placeholder / Coming Soon Pages
+        # 5. Zero Placeholder / Coming Soon Pages
         all_text = " ".join(crawled_pages.values()).lower()
         banned_placeholders = ["under construction", "coming soon", "sample page", "hello world!", "default demo content"]
         found_placeholders = [p for p in banned_placeholders if p in all_text or p in lower_html]
@@ -138,12 +183,12 @@ class SiteStructureChecker:
                 name="Zero 'Under Construction' or Demo Content",
                 status=CheckStatus.PASS,
                 severity=Severity.BLOCKER,
-                score=3.0,
-                max_score=3.0,
+                score=2.0,
+                max_score=2.0,
                 details="Site is fully launched. No demo, placeholder, or 'coming soon' markers detected.",
                 doc_url="https://support.google.com/adsense/answer/10502938"
             ))
-            pillar.earned_score += 3.0
+            pillar.earned_score += 2.0
         else:
             pillar.checks.append(CheckResult(
                 id="zero_placeholder_pages",
@@ -151,11 +196,11 @@ class SiteStructureChecker:
                 status=CheckStatus.FAIL,
                 severity=Severity.BLOCKER,
                 score=0.0,
-                max_score=3.0,
+                max_score=2.0,
                 details=f"Detected demo/placeholder content: {', '.join(found_placeholders)}.",
                 fix_recommendation="Delete all demo WordPress posts (like 'Hello World!'), default pages, and remove any 'Under Construction' banners.",
                 doc_url="https://support.google.com/adsense/answer/10502938"
             ))
-        pillar.max_score += 3.0
+        pillar.max_score += 2.0
 
         return pillar

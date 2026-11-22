@@ -9,6 +9,7 @@ import json
 import time
 import urllib.request
 import urllib.parse
+import urllib.error
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
@@ -64,6 +65,17 @@ class AdSenseAuditor:
                 return text, latency, None
         except Exception as e:
             return None, 0.0, str(e)
+
+    def probe_url_status(self, url: str, timeout: int = 6) -> Tuple[int, Optional[str]]:
+        """Probes URL status code and final redirected URL."""
+        req = urllib.request.Request(url, headers=self.session_headers)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return resp.status, resp.geturl()
+        except urllib.error.HTTPError as e:
+            return e.code, None
+        except Exception:
+            return 500, None
 
     def extract_links(self, base_url: str, html: str) -> List[str]:
         """Extracts internal links from HTML."""
@@ -123,10 +135,12 @@ class AdSenseAuditor:
                 if not any(ex in lower_link for ex in ["/category/", "/tag/", "/author/", "/page/", ".jpg", ".png", "/feed"]):
                     article_candidates.append(link)
 
-        # 3. Probe Robots.txt & Sitemap
+        # 3. Probe Robots.txt, Sitemap & Ads.txt
         robots_txt = None
         sitemap_found = False
         sitemap_url = ""
+        ads_txt_content = None
+        sitemap_health = None
 
         if not mock_html:
             target_base = target_url.rstrip("/")
@@ -144,6 +158,13 @@ class AdSenseAuditor:
                         sitemap_url = sitemap_match.group(1)
                     break
 
+            # Probe Ads.txt Authorized Digital Sellers
+            for b in probe_bases:
+                a_content, _, _ = self.fetch_url(f"{b}/ads.txt", timeout=6)
+                if a_content and "pub-" in a_content:
+                    ads_txt_content = a_content
+                    break
+
             if not sitemap_found:
                 for b in probe_bases:
                     for s_path in ["/sitemap.xml", "/sitemap_index.xml", "/wp-sitemap.xml"]:
@@ -155,7 +176,7 @@ class AdSenseAuditor:
                     if sitemap_found:
                         break
 
-            # If sitemap was discovered, extract all <loc> entries into internal_links
+            # If sitemap was discovered, extract all <loc> entries into internal_links and sample health
             if sitemap_found and sitemap_url:
                 s_body, _, _ = self.fetch_url(sitemap_url, timeout=6)
                 if s_body:
@@ -164,6 +185,23 @@ class AdSenseAuditor:
                         clean_loc = loc.strip()
                         if clean_loc and clean_loc not in internal_links:
                             internal_links.append(clean_loc)
+
+                    # Deep Sitemap Health Check: Sample up to 10 discovered URLs for 404s and 301 redirects
+                    sitemap_sample = [u for u in loc_matches if u.strip().startswith("http")][:10]
+                    if sitemap_sample:
+                        dead_404 = 0
+                        redirects = 0
+                        for s_loc in sitemap_sample:
+                            st_code, fin_url = self.probe_url_status(s_loc.strip(), timeout=5)
+                            if st_code == 404:
+                                dead_404 += 1
+                            elif fin_url and fin_url.rstrip("/") != s_loc.strip().rstrip("/"):
+                                redirects += 1
+                        sitemap_health = {
+                            "sampled_count": len(sitemap_sample),
+                            "dead_404_count": dead_404,
+                            "redirect_count": redirects
+                        }
 
             # Re-categorize legal and article candidates with discovered sitemap links
             for link in internal_links:
@@ -179,11 +217,17 @@ class AdSenseAuditor:
             robots_txt = "User-agent: *\nAllow: /\nUser-agent: Mediapartners-Google\nAllow: /"
             sitemap_found = True
             sitemap_url = f"{origin}/sitemap.xml"
+            ads_txt_content = "google.com, pub-1234567890123456, DIRECT, f08c47fec0942fa0"
+            sitemap_health = {
+                "sampled_count": 5,
+                "dead_404_count": 0,
+                "redirect_count": 0
+            }
 
         # 4. Crawl Sample Legal Pages & Articles
         crawled_pages = {"homepage": homepage_html}
 
-        if target_url.startswith("http") and (legal_candidates or article_candidates):
+        if not mock_html and target_url.startswith("http") and (legal_candidates or article_candidates):
             for l_url in legal_candidates[:5]:
                 content, _, _ = self.fetch_url(l_url, timeout=6)
                 if content:
@@ -211,7 +255,16 @@ class AdSenseAuditor:
         # 5. Execute 7-Pillar Checkers
         p1 = LegalTrustChecker(self.rules).run(target_url, homepage_html, crawled_pages)
         p2 = ContentEEATChecker(self.rules).run(article_candidates, sample_articles, is_web_app=is_app)
-        p3 = TechSEOChecker(self.rules).run(target_url, homepage_html, robots_txt, sitemap_found, sitemap_url, latency)
+        p3 = TechSEOChecker(self.rules).run(
+            target_url,
+            homepage_html,
+            robots_txt,
+            sitemap_found,
+            sitemap_url,
+            latency,
+            ads_txt=ads_txt_content,
+            sitemap_health=sitemap_health
+        )
         p4 = SiteStructureChecker(self.rules).run(homepage_html, crawled_pages, internal_links)
         p5 = PolicyProhibitedChecker(self.rules).run(homepage_html, crawled_pages)
         p6 = AdLayoutChecker(self.rules).run(homepage_html)

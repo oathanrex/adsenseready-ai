@@ -1,9 +1,9 @@
 """
-Pillar 6: Ad Placement Ergonomics & Invalid Traffic Prevention Checker
+Pillar 6: Ad Placement Ergonomics, AdSense Code Verification & Invalid Traffic Prevention
 """
 
 import re
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from ..models import PillarResult, CheckResult, CheckStatus, Severity
 
 
@@ -15,7 +15,7 @@ class AdLayoutChecker:
     def run(self, homepage_html: str) -> PillarResult:
         pillar = PillarResult(
             id="ad_layout_readiness",
-            name="Ad Placement Ergonomics & Invalid Traffic Prevention",
+            name="Ad Placement Ergonomics & Script Verification",
             weight=self.weight,
             earned_score=0.0,
             max_score=0.0,
@@ -82,6 +82,79 @@ class AdLayoutChecker:
                 doc_url="https://support.google.com/adsense/answer/1346295"
             ))
             pillar.earned_score += 0.5
+        pillar.max_score += 2.0
+
+        # 3. Forensic AdSense Head Tag & Dynamic Injection Detection
+        has_dynamic_injection = bool(re.search(r"createelement\s*\(\s*['\"]script['\"]\s*\)[\s\S]{0,300}googlesyndication\.com", homepage_html, re.IGNORECASE))
+        has_static_script = bool(re.search(r"<script[^>]+src=[\"']https?://pagead2\.googlesyndication\.com/pagead/js/adsbygoogle\.js", homepage_html, re.IGNORECASE))
+        has_adsense_meta = bool(re.search(r'<meta[^>]+name=[\"\']google-adsense-account[\"\'][^>]+content=[\"\']ca-pub-\d+[\"\']', homepage_html, re.IGNORECASE))
+
+        if has_dynamic_injection:
+            pillar.checks.append(CheckResult(
+                id="adsense_script_implementation",
+                name="AdSense Script Delivery Pattern",
+                status=CheckStatus.FAIL,
+                severity=Severity.BLOCKER,
+                score=0.0,
+                max_score=3.0,
+                details="CRITICAL BLOCKER: Dynamic AdSense script injection detected ('document.createElement(\"script\")'). Google automated site verification crawlers parse raw delivered HTML and fail to verify modified or dynamically injected tags.",
+                fix_recommendation="Replace dynamic JS loader with the standard canonical snippet: <script async src=\"https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXX\" crossorigin=\"anonymous\"></script> in <head>.",
+                doc_url="https://support.google.com/adsense/answer/9274634"
+            ))
+        elif has_static_script:
+            pillar.checks.append(CheckResult(
+                id="adsense_script_implementation",
+                name="AdSense Script Delivery Pattern",
+                status=CheckStatus.PASS,
+                severity=Severity.HIGH,
+                score=3.0,
+                max_score=3.0,
+                details="Standard canonical static AdSense script snippet verified directly in server-delivered HTML markup.",
+                doc_url="https://support.google.com/adsense/answer/9274634"
+            ))
+            pillar.earned_score += 3.0
+        else:
+            pillar.checks.append(CheckResult(
+                id="adsense_script_implementation",
+                name="AdSense Script Delivery Pattern",
+                status=CheckStatus.WARNING,
+                severity=Severity.MEDIUM,
+                score=1.5,
+                max_score=3.0,
+                details="No AdSense script tag detected on homepage (acceptable if submitting a pre-approval audit, but required prior to site verification).",
+                fix_recommendation="Ensure the AdSense code snippet is placed in the <head> of your site before clicking 'Request review'.",
+                doc_url="https://support.google.com/adsense/answer/9274634"
+            ))
+            pillar.earned_score += 1.5
+        pillar.max_score += 3.0
+
+        # 4. Google Consent Mode v2 Detection
+        has_consent_mode = "gtag('consent'" in lower_html or 'gtag("consent"' in lower_html
+        if has_consent_mode:
+            pillar.checks.append(CheckResult(
+                id="google_consent_mode_v2",
+                name="Google Consent Mode v2 Compliance",
+                status=CheckStatus.PASS,
+                severity=Severity.MEDIUM,
+                score=2.0,
+                max_score=2.0,
+                details="Google Consent Mode v2 default consent configuration detected before ad tag evaluation.",
+                doc_url="https://developers.google.com/tag-platform/security/guides/consent"
+            ))
+            pillar.earned_score += 2.0
+        else:
+            pillar.checks.append(CheckResult(
+                id="google_consent_mode_v2",
+                name="Google Consent Mode v2 Compliance",
+                status=CheckStatus.WARNING,
+                severity=Severity.MEDIUM,
+                score=1.0,
+                max_score=2.0,
+                details="Consent Mode v2 default configuration not detected. Recommended for EU/EEA and UK traffic compliance.",
+                fix_recommendation="Initialize default denied consent state via gtag('consent', 'default', {...}) prior to firing Google tags.",
+                doc_url="https://developers.google.com/tag-platform/security/guides/consent"
+            ))
+            pillar.earned_score += 1.0
         pillar.max_score += 2.0
 
         return pillar

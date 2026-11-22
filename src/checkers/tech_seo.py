@@ -1,5 +1,5 @@
 """
-Pillar 3: Technical Crawlability & Web Health Checker
+Pillar 3: Technical Crawlability, Sitemap Integrity & Ads.txt Verification Checker
 """
 
 import re
@@ -19,7 +19,9 @@ class TechSEOChecker:
         robots_txt: Optional[str],
         sitemap_found: bool,
         sitemap_url: str,
-        latency_seconds: float
+        latency_seconds: float,
+        ads_txt: Optional[str] = None,
+        sitemap_health: Optional[Dict[str, Any]] = None
     ) -> PillarResult:
         pillar = PillarResult(
             id="technical_seo",
@@ -117,19 +119,65 @@ class TechSEOChecker:
             pillar.earned_score += 2.5
         pillar.max_score += 4.0
 
-        # 3. XML Sitemap Detected
+        # 3. XML Sitemap Detected & Deep Health Check
         if sitemap_found:
-            pillar.checks.append(CheckResult(
-                id="sitemap_xml_detected",
-                name="XML Sitemap Detection",
-                status=CheckStatus.PASS,
-                severity=Severity.HIGH,
-                score=4.0,
-                max_score=4.0,
-                details=f"Valid XML sitemap detected at {sitemap_url}.",
-                doc_url="https://developers.google.com/search/docs/crawling-indexing/sitemaps/overview"
-            ))
-            pillar.earned_score += 4.0
+            # Check sitemap health if provided
+            if sitemap_health:
+                dead_404_count = sitemap_health.get("dead_404_count", 0)
+                sampled_count = sitemap_health.get("sampled_count", 0)
+                redirect_count = sitemap_health.get("redirect_count", 0)
+                dead_rate = (dead_404_count / sampled_count) if sampled_count > 0 else 0.0
+
+                if dead_rate > 0.05:  # Over 5% dead links in sitemap is a critical blocker
+                    pillar.checks.append(CheckResult(
+                        id="sitemap_xml_detected",
+                        name="XML Sitemap & Zero-404 Integrity",
+                        status=CheckStatus.FAIL,
+                        severity=Severity.BLOCKER,
+                        score=1.0,
+                        max_score=4.0,
+                        details=f"CRITICAL BLOCKER: Sitemap contains high dead-end rate ({dead_404_count}/{sampled_count} tested URLs returned 404). Google AdSense automated raters classify high sitemap 404 rates as 'Site Under Construction / Incomplete Navigation'.",
+                        fix_recommendation="Prune all non-existent or dead URLs from sitemap.xml immediately so 100% of sitemap URLs return HTTP 200.",
+                        doc_url="https://developers.google.com/search/docs/crawling-indexing/sitemaps/overview"
+                    ))
+                    pillar.earned_score += 1.0
+                elif redirect_count > 0:
+                    pillar.checks.append(CheckResult(
+                        id="sitemap_xml_detected",
+                        name="XML Sitemap & Zero-404 Integrity",
+                        status=CheckStatus.WARNING,
+                        severity=Severity.MEDIUM,
+                        score=3.0,
+                        max_score=4.0,
+                        details=f"Sitemap detected with {redirect_count} non-canonical redirecting URLs. Best practice is to list only direct 200 canonical URLs (e.g. trailing slashes).",
+                        fix_recommendation="Remove 301-redirecting duplicate URLs from sitemap.xml and keep only final canonical versions.",
+                        doc_url="https://developers.google.com/search/docs/crawling-indexing/sitemaps/overview"
+                    ))
+                    pillar.earned_score += 3.0
+                else:
+                    pillar.checks.append(CheckResult(
+                        id="sitemap_xml_detected",
+                        name="XML Sitemap & Zero-404 Integrity",
+                        status=CheckStatus.PASS,
+                        severity=Severity.HIGH,
+                        score=4.0,
+                        max_score=4.0,
+                        details=f"Valid XML sitemap detected at {sitemap_url} with 0% dead-link error rate across sampled entries.",
+                        doc_url="https://developers.google.com/search/docs/crawling-indexing/sitemaps/overview"
+                    ))
+                    pillar.earned_score += 4.0
+            else:
+                pillar.checks.append(CheckResult(
+                    id="sitemap_xml_detected",
+                    name="XML Sitemap Detection",
+                    status=CheckStatus.PASS,
+                    severity=Severity.HIGH,
+                    score=4.0,
+                    max_score=4.0,
+                    details=f"Valid XML sitemap detected at {sitemap_url}.",
+                    doc_url="https://developers.google.com/search/docs/crawling-indexing/sitemaps/overview"
+                ))
+                pillar.earned_score += 4.0
         else:
             pillar.checks.append(CheckResult(
                 id="sitemap_xml_detected",
@@ -144,7 +192,65 @@ class TechSEOChecker:
             ))
         pillar.max_score += 4.0
 
-        # 4. Mobile Responsive Viewport
+        # 4. Ads.txt Authorized Digital Sellers Check
+        if ads_txt is not None:
+            is_valid_ads_txt = bool(re.search(r"google\.com,\s*pub-\d+,\s*direct,\s*f08c47fec0942fa0", ads_txt, re.IGNORECASE))
+            has_pub_id = bool(re.search(r"pub-\d+", ads_txt))
+
+            if is_valid_ads_txt:
+                pillar.checks.append(CheckResult(
+                    id="ads_txt_authorization",
+                    name="Authorized Digital Sellers (ads.txt)",
+                    status=CheckStatus.PASS,
+                    severity=Severity.HIGH,
+                    score=3.0,
+                    max_score=3.0,
+                    details="Valid ads.txt record found with official Google DIRECT authorized seller syntax.",
+                    doc_url="https://support.google.com/adsense/answer/7532444"
+                ))
+                pillar.earned_score += 3.0
+            elif has_pub_id:
+                pillar.checks.append(CheckResult(
+                    id="ads_txt_authorization",
+                    name="Authorized Digital Sellers (ads.txt)",
+                    status=CheckStatus.WARNING,
+                    severity=Severity.MEDIUM,
+                    score=1.5,
+                    max_score=3.0,
+                    details="ads.txt exists with a publisher ID but lacks exact Google standard syntax ('google.com, pub-XXXXXXXXXX, DIRECT, f08c47fec0942fa0').",
+                    fix_recommendation="Format your ads.txt line exactly as: google.com, pub-XXXXXXXXXXXXXXXX, DIRECT, f08c47fec0942fa0",
+                    doc_url="https://support.google.com/adsense/answer/7532444"
+                ))
+                pillar.earned_score += 1.5
+            else:
+                pillar.checks.append(CheckResult(
+                    id="ads_txt_authorization",
+                    name="Authorized Digital Sellers (ads.txt)",
+                    status=CheckStatus.WARNING,
+                    severity=Severity.MEDIUM,
+                    score=1.0,
+                    max_score=3.0,
+                    details="ads.txt file found at /ads.txt but does not contain a Google AdSense publisher record.",
+                    fix_recommendation="Add 'google.com, pub-YOUR_PUB_ID, DIRECT, f08c47fec0942fa0' to your ads.txt file.",
+                    doc_url="https://support.google.com/adsense/answer/7532444"
+                ))
+                pillar.earned_score += 1.0
+        else:
+            pillar.checks.append(CheckResult(
+                id="ads_txt_authorization",
+                name="Authorized Digital Sellers (ads.txt)",
+                status=CheckStatus.WARNING,
+                severity=Severity.MEDIUM,
+                score=1.5,
+                max_score=3.0,
+                details="No ads.txt file detected at /ads.txt. (Required once your AdSense account is approved to prevent revenue loss).",
+                fix_recommendation="Place an ads.txt file at the root of your domain with your AdSense publisher ID.",
+                doc_url="https://support.google.com/adsense/answer/7532444"
+            ))
+            pillar.earned_score += 1.5
+        pillar.max_score += 3.0
+
+        # 5. Mobile Responsive Viewport
         has_viewport = bool(re.search(r'<meta[^>]+name=["\']viewport["\'][^>]+content=["\'][^"\']*width=device-width', homepage_html, re.IGNORECASE))
         if has_viewport:
             pillar.checks.append(CheckResult(
