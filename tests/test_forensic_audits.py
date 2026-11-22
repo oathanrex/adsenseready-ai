@@ -184,3 +184,47 @@ def test_site_structure_editorial_prominence():
     res_prominent = checker.run(prominent_html, {"homepage": prominent_html}, ["https://example.com/blog"])
     p_check = next(c for c in res_prominent.checks if c.id == "editorial_header_prominence")
     assert p_check.status == CheckStatus.PASS
+
+
+def test_tech_seo_json_ld_schema_validation():
+    checker = TechSEOChecker({})
+
+    # 1. Broken JSON-LD with unescaped literal quote in title
+    broken_html = """
+    <html>
+    <head>
+        <script type="application/ld+json">
+        {
+            "@context": "https://schema.org",
+            "@type": "Article",
+            "headline": "Passport Photo Size: 2x2", 35x45mm Guide"
+        }
+        </script>
+    </head>
+    <body><h1>Test</h1></body>
+    </html>
+    """
+    res_broken = checker.run("https://example.com", broken_html, "User-agent: *\nAllow: /", True, "https://example.com/sitemap.xml", 0.2)
+    schema_check = next(c for c in res_broken.checks if c.id == "json_ld_schema_validity")
+    assert schema_check.status == CheckStatus.FAIL
+    assert schema_check.severity == Severity.HIGH
+    assert "Malformed JSON-LD syntax detected" in schema_check.details
+
+    # 2. Clean valid JSON-LD
+    clean_html = """
+    <html>
+    <head>
+        <script type="application/ld+json">
+        {
+            "@context": "https://schema.org",
+            "@type": "Article",
+            "headline": "Passport Photo Size: 2x2 Inch, 35x45mm Guide"
+        }
+        </script>
+    </head>
+    <body><h1>Test</h1></body>
+    </html>
+    """
+    res_clean = checker.run("https://example.com", clean_html, "User-agent: *\nAllow: /", True, "https://example.com/sitemap.xml", 0.2)
+    schema_check_c = next(c for c in res_clean.checks if c.id == "json_ld_schema_validity")
+    assert schema_check_c.status == CheckStatus.PASS

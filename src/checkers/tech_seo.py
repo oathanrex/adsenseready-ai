@@ -3,6 +3,7 @@ Pillar 3: Technical Crawlability, Sitemap Integrity & Ads.txt Verification Check
 """
 
 import re
+import json
 from typing import Dict, Any, Optional
 from ..models import PillarResult, CheckResult, CheckStatus, Severity
 
@@ -277,5 +278,53 @@ class TechSEOChecker:
                 doc_url="https://developers.google.com/search/docs/appearance/mobile-sites"
             ))
         pillar.max_score += 3.0
+
+        # 6. JSON-LD Structured Data Schema Validation
+        json_ld_matches = re.findall(r'<script type=[\'"]application/ld\+json[\'"]>(.*?)</script>', homepage_html, re.DOTALL)
+        if json_ld_matches:
+            schema_errors = []
+            for idx, raw_json in enumerate(json_ld_matches):
+                try:
+                    json.loads(raw_json)
+                except Exception as e:
+                    schema_errors.append(f"Block #{idx+1}: {str(e)}")
+
+            if schema_errors:
+                pillar.checks.append(CheckResult(
+                    id="json_ld_schema_validity",
+                    name="JSON-LD Structured Data Syntax Integrity",
+                    status=CheckStatus.FAIL,
+                    severity=Severity.HIGH,
+                    score=0.0,
+                    max_score=2.0,
+                    details=f"Malformed JSON-LD syntax detected ({'; '.join(schema_errors)}). Often caused by unescaped quotes in titles/descriptions (e.g. 2x2\" instead of 2x2 Inch).",
+                    fix_recommendation="Ensure all JSON-LD strings are properly escaped or replace literal double quotes with 'Inch' or HTML entities.",
+                    doc_url="https://developers.google.com/search/docs/appearance/structured-data/intro-structured-data"
+                ))
+            else:
+                pillar.checks.append(CheckResult(
+                    id="json_ld_schema_validity",
+                    name="JSON-LD Structured Data Syntax Integrity",
+                    status=CheckStatus.PASS,
+                    severity=Severity.HIGH,
+                    score=2.0,
+                    max_score=2.0,
+                    details=f"All {len(json_ld_matches)} JSON-LD structured data blocks parsed cleanly with valid schema syntax.",
+                    doc_url="https://developers.google.com/search/docs/appearance/structured-data/intro-structured-data"
+                ))
+                pillar.earned_score += 2.0
+        else:
+            pillar.checks.append(CheckResult(
+                id="json_ld_schema_validity",
+                name="JSON-LD Structured Data Syntax Integrity",
+                status=CheckStatus.PASS,
+                severity=Severity.MEDIUM,
+                score=1.5,
+                max_score=2.0,
+                details="No JSON-LD schema detected on homepage.",
+                doc_url="https://developers.google.com/search/docs/appearance/structured-data/intro-structured-data"
+            ))
+            pillar.earned_score += 1.5
+        pillar.max_score += 2.0
 
         return pillar
