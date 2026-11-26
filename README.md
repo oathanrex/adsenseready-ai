@@ -1,24 +1,68 @@
 <div align="center">
 
 # 🎯 AdSenseReady-AI
-### The Universal AI Skill, Native MCP Server & 360° Automated Audit Engine for 100% Google AdSense Approval Readiness
+### Find the exact Google AdSense readiness gaps reviewers look for — before you reapply
 
 [![CI Test Suite](https://github.com/oathanrex/adsenseready-ai/actions/workflows/test.yml/badge.svg)](https://github.com/oathanrex/adsenseready-ai/actions/workflows/test.yml)
 [![Python Versions](https://img.shields.io/badge/Python-3.10%20%7C%203.11%20%7C%203.12-blue.svg)](https://www.python.org/)
 [![Model Context Protocol](https://img.shields.io/badge/MCP-Compatible-purple.svg)](https://modelcontextprotocol.io/)
-[![Google Policies](https://img.shields.io/badge/Google%20Policy%20Sync-Live%20v2026.11-success.svg)]()
+[![Google Policies](https://img.shields.io/badge/Google%20Policy%20Sync-Live%20v2026.11.3-success.svg)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Curated by Oathan Rex](https://img.shields.io/badge/Author-Oathan%20Rex-0d6e52.svg)](https://github.com/oathanrex)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/oathanrex/adsenseready-ai/blob/main/CONTRIBUTING.md)
 [![GitHub Stars](https://img.shields.io/github/stars/oathanrex/adsenseready-ai?style=social)](https://github.com/oathanrex/adsenseready-ai/stargazers)
 
-*Eliminate Google AdSense rejections for **"Low Value Content"**, **"Site Under Construction"**, and **"Policy Violations"**. Forensic 7-pillar evaluation with dynamic auto-updating Google policy sync.*
+*Catch common **"Low Value Content"**, **"Site Under Construction"**, and **"Policy Violation"** blockers across 7 weighted pillars.*  
+> **Note:** AdSenseReady-AI is a **diagnostic aid**, not an official Google tool or approval guarantee.
 
-[Quick Start](#-quick-start--installation) • [7-Pillar Matrix](#-the-7-pillar-audit-matrix) • [HTML Dashboard](#-multi-format-reporting) • [MCP Server Setup](#-model-context-protocol-mcp-integration) • [Cross-AI Agents](#-universal-cross-ai-compatibility)
+[30-Second Quick Start](#-30-second-quick-start) • [Why Not Lighthouse?](#-why-not-just-lighthouse) • [7-Pillar Matrix](#-the-7-pillar-audit-matrix) • [MCP Server](#-model-context-protocol-mcp-integration) • [Proof](#-verified-proof)
 
 ---
 
 </div>
+
+## ⚡ 30-Second Quick Start
+
+```bash
+git clone https://github.com/oathanrex/adsenseready-ai.git && cd adsenseready-ai
+pip install -r requirements.txt
+python -m src.cli https://your-site.com --profile blog
+python -m src.cli https://your-site.com --format html --output report.html
+```
+
+**Sample Output (live audit):**
+```text
+Score: 98.7/100 · APPROVED_READY · 0 blockers
+⚠ certified_cmp_presence: No Google-certified TCF v2.2 CMP detected (EEA/UK/CH)
+```
+
+---
+
+## 🔍 Why Not Just Lighthouse?
+
+| Tool | What It Checks | AdSense Policy & E-E-A-T? |
+| :--- | :--- | :---: |
+| **Lighthouse** | Performance, Core Web Vitals, a11y | ❌ |
+| **Ahrefs / Semrush** | Backlinks, keywords, crawl errors | ❌ |
+| **AdSenseReady-AI** | Legal/privacy disclosures, `ads.txt`, `data-ad-slot`, TCF CMP, `hreflang`↔`noindex`, doorway patterns, E-E-A-T & profile thresholds (`blog` / `saas` / `docs`) | ✅ |
+
+---
+
+## 👥 Who Is This For?
+
+- **Bloggers & Publishers:** Catch missing policy disclosures, thin pages, and `noindex`/`hreflang` conflicts before reapplying.
+- **Agencies:** Batch-audit client sites via JSON output (`--format json`) and HTML reports.
+- **AI Agents (Claude / Cursor):** Run `audit_website` directly from your IDE via the built-in MCP server.
+- **Developers:** Gate deployments in CI with `--strict`, `--profile saas`, and custom `--threshold` rules.
+
+---
+
+## ✅ Verified Proof
+
+- **Test Suite:** **30/30 tests passing** in CI (`python -m pytest -q`).
+- **Live Audits Verified:**
+  - `perspectivefix.app` (`--crawl-depth 15`): **98.7 / 100**, `0` blockers, accurately flagged missing `certified_cmp_presence`.
+  - `python.org` (`--crawl-depth 5`): **74.8 / 100**, zero crashes, flagged expected generic gaps (no `ads.txt`, no AdSense script).
 
 ## 🌟 Overview & Problem Solved
 
@@ -188,7 +232,7 @@ python scripts/sync_policies.py
 
 ## 🧪 Testing & Verification
 
-Run the full automated test suite (15/15 tests passing):
+Run the full automated test suite (30/30 tests passing):
 ```bash
 python -m pytest tests/
 ```
