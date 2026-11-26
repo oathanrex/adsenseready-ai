@@ -45,7 +45,7 @@ Examples:
     parser.add_argument("--generate-article", action="store_true", help="Autonomously generate a full 1,400+ word substantive article in Markdown")
     parser.add_argument("--badge", help="Generate a Retina-ready SVG AdSense readiness badge to specified file path")
     parser.add_argument("--topic", default="Technical Guide", help="Topic name for the article expansion (default: 'Technical Guide')")
-    parser.add_argument("--author", default="Oathan Rex", help="Author name for E-E-A-T credentials box (default: 'Oathan Rex')")
+    parser.add_argument("--author", default="Editorial Team", help="Author name for E-E-A-T credentials box (default: 'Editorial Team')")
 
     args = parser.parse_args()
 

@@ -102,7 +102,7 @@ TOOLS = [
                 "author_name": {
                     "type": "string",
                     "description": "Author name for E-E-A-T byline",
-                    "default": "Oathan Rex"
+                    "default": "Editorial Team"
                 }
             },
             "required": ["topic", "current_content"]
@@ -121,7 +121,7 @@ TOOLS = [
                 "author_name": {
                     "type": "string",
                     "description": "Author name for credentials box",
-                    "default": "Oathan Rex"
+                    "default": "Editorial Team"
                 }
             },
             "required": ["topic"]
@@ -228,7 +228,7 @@ def handle_call_tool(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
     elif name == "eliminate_low_value_content":
         topic = arguments.get("topic", "")
         current_content = arguments.get("current_content", "")
-        author_name = arguments.get("author_name", "Oathan Rex")
+        author_name = arguments.get("author_name", "Editorial Team")
         eliminator = LowValueContentEliminator()
         plan = eliminator.generate_expansion_plan(topic, current_content, author_name=author_name)
         text_result = f"""
@@ -254,7 +254,7 @@ def handle_call_tool(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         }
     elif name == "generate_full_article":
         topic = arguments.get("topic", "")
-        author_name = arguments.get("author_name", "Oathan Rex")
+        author_name = arguments.get("author_name", "Editorial Team")
         article_md = ArticleGenerator.generate(topic, author_name=author_name)
         return {
             "content": [
