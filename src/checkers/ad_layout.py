@@ -157,4 +157,74 @@ class AdLayoutChecker:
             pillar.earned_score += 1.0
         pillar.max_score += 2.0
 
+        # 5. Ad Slot Completeness (<ins class="adsbygoogle"> missing data-ad-slot)
+        ins_tags = re.findall(r'<ins\b[^>]*class=["\'][^"\']*adsbygoogle[^"\']*["\'][^>]*>', homepage_html, re.IGNORECASE)
+        if ins_tags:
+            missing_slot = [t for t in ins_tags if not re.search(r'data-ad-slot=["\']\d+["\']', t, re.IGNORECASE)]
+            if not missing_slot:
+                pillar.checks.append(CheckResult(
+                    id="ad_slot_completeness",
+                    name="Ad Unit Slot IDs (<ins> data-ad-slot)",
+                    status=CheckStatus.PASS,
+                    severity=Severity.MEDIUM,
+                    score=2.0,
+                    max_score=2.0,
+                    details=f"All {len(ins_tags)} <ins class='adsbygoogle'> ad containers specify a valid numeric data-ad-slot ID.",
+                    doc_url="https://support.google.com/adsense/answer/9274634"
+                ))
+                pillar.earned_score += 2.0
+            else:
+                pillar.checks.append(CheckResult(
+                    id="ad_slot_completeness",
+                    name="Ad Unit Slot IDs (<ins> data-ad-slot)",
+                    status=CheckStatus.WARNING,
+                    severity=Severity.HIGH,
+                    score=0.0,
+                    max_score=2.0,
+                    details=f"Found {len(missing_slot)}/{len(ins_tags)} <ins class='adsbygoogle'> tag(s) missing data-ad-slot. Ads will fail to render in these containers even after approval.",
+                    fix_recommendation="Add valid numeric data-ad-slot=\"XXXXXXXXXX\" attributes from your AdSense dashboard to every <ins class='adsbygoogle'> unit, or rely purely on Auto Ads.",
+                    doc_url="https://support.google.com/adsense/answer/9274634"
+                ))
+            pillar.max_score += 2.0
+
+        # 6. Google-Certified TCF v2.2 CMP Detection (EEA/UK/CH)
+        certified_cmp_markers = [
+            "fundingchoicesmessages.google.com",
+            "consent.cookiebot.com",
+            "cdn.cookielaw.org",
+            "quantcast.com/choice",
+            "sdk.privacy-center.org",
+            "app.usercentrics.eu",
+            "app.termly.io",
+            "iubenda.com",
+            "__tcfapi"
+        ]
+        has_certified_cmp = any(m in lower_html for m in certified_cmp_markers)
+        if has_certified_cmp:
+            pillar.checks.append(CheckResult(
+                id="certified_cmp_presence",
+                name="Google-Certified TCF v2.2 CMP (EEA/UK/CH)",
+                status=CheckStatus.PASS,
+                severity=Severity.MEDIUM,
+                score=2.0,
+                max_score=2.0,
+                details="Google-certified TCF v2.2 Consent Management Platform (CMP) signal detected.",
+                doc_url="https://support.google.com/adsense/answer/13554116"
+            ))
+            pillar.earned_score += 2.0
+        else:
+            pillar.checks.append(CheckResult(
+                id="certified_cmp_presence",
+                name="Google-Certified TCF v2.2 CMP (EEA/UK/CH)",
+                status=CheckStatus.WARNING,
+                severity=Severity.MEDIUM,
+                score=0.5,
+                max_score=2.0,
+                details="No Google-certified TCF v2.2 CMP detected (custom consent banners alone do not satisfy EEA/UK/CH AdSense CMP rules).",
+                fix_recommendation="Enable Google's built-in Privacy & Messaging CMP (Funding Choices) in AdSense or integrate a Google-certified TCF v2.2 CMP.",
+                doc_url="https://support.google.com/adsense/answer/13554116"
+            ))
+            pillar.earned_score += 0.5
+        pillar.max_score += 2.0
+
         return pillar

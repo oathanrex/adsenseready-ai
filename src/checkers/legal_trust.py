@@ -264,4 +264,39 @@ class LegalTrustChecker:
             pillar.earned_score += 0.5
         pillar.max_score += 1.0
 
+        # 6. Editorial & Testing Methodology / First-Hand E-E-A-T Depth
+        methodology_markers = [
+            "methodology", "how we test", "editorial policy", "editorial standards",
+            "testing methodology", "corrections", "verified", "first-hand",
+            '"@type": "person"', '"@type":"person"', '"@type": "profilepage"', '"@type":"profilepage"'
+        ]
+        trust_corpus = (about_content + " " + all_html_text).lower()
+        method_hits = [m for m in methodology_markers if m in trust_corpus]
+        if len(method_hits) >= 2:
+            pillar.checks.append(CheckResult(
+                id="editorial_methodology_eeat",
+                name="Editorial & Testing Methodology (First-Hand E-E-A-T)",
+                status=CheckStatus.PASS,
+                severity=Severity.HIGH,
+                score=2.0,
+                max_score=2.0,
+                details=f"Substantive editorial/testing methodology and author credentials signals detected ({len(method_hits)} markers).",
+                doc_url="https://developers.google.com/search/docs/fundamentals/creating-helpful-content"
+            ))
+            pillar.earned_score += 2.0
+        else:
+            pillar.checks.append(CheckResult(
+                id="editorial_methodology_eeat",
+                name="Editorial & Testing Methodology (First-Hand E-E-A-T)",
+                status=CheckStatus.WARNING,
+                severity=Severity.HIGH,
+                score=0.5,
+                max_score=2.0,
+                details="About/Author pages lack explicit testing methodology, verification standards, or Person/ProfilePage schema.",
+                fix_recommendation="Document your testing/editorial methodology, real author credentials, and correction policy on your About and Author pages.",
+                doc_url="https://developers.google.com/search/docs/fundamentals/creating-helpful-content"
+            ))
+            pillar.earned_score += 0.5
+        pillar.max_score += 2.0
+
         return pillar

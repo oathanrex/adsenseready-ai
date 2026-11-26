@@ -67,3 +67,63 @@ def test_rejected_site_flags_blockers():
     assert "zero_placeholder_pages" in blocker_ids
 
     assert report.verdict == "REJECTION_GUARANTEED"
+
+
+def test_ad_slot_and_certified_cmp_checks():
+    """Verify AdLayoutChecker flags missing data-ad-slot and uncertified custom CMP."""
+    from src.checkers.ad_layout import AdLayoutChecker
+
+    checker = AdLayoutChecker({})
+    html_missing_slot = '''
+    <html><head>
+    <script>gtag('consent', 'default', {ad_storage: 'denied'});</script>
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-123"></script>
+    </head><body><main>
+    <ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-123"></ins>
+    </main></body></html>
+    '''
+    res = checker.run(html_missing_slot)
+    by_id = {c.id: c for c in res.checks}
+    assert by_id["ad_slot_completeness"].status.value == "WARNING"
+    assert by_id["certified_cmp_presence"].status.value == "WARNING"
+
+    html_complete = '''
+    <html><head>
+    <script>gtag('consent', 'default', {ad_storage: 'denied'});</script>
+    <script src="https://fundingchoicesmessages.google.com/i/pub-123"></script>
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-123"></script>
+    </head><body><main>
+    <ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-123" data-ad-slot="9876543210"></ins>
+    </main></body></html>
+    '''
+    res_ok = checker.run(html_complete)
+    by_id_ok = {c.id: c for c in res_ok.checks}
+    assert by_id_ok["ad_slot_completeness"].status.value == "PASS"
+    assert by_id_ok["certified_cmp_presence"].status.value == "PASS"
+
+
+def test_template_duplication_and_methodology_checks():
+    """Verify ContentEEATChecker catches templated pages and LegalTrustChecker checks methodology."""
+    from src.checkers.content_eeat import ContentEEATChecker
+    from src.checkers.legal_trust import LegalTrustChecker
+
+    eeat = ContentEEATChecker({})
+    shared = " ".join([f"word{i}" for i in range(60)])
+    dup_pages = {
+        "https://example.com/tool-a": f"<html><body><main><p>{shared} alpha</p></main></body></html>",
+        "https://example.com/tool-b": f"<html><body><main><p>{shared} beta</p></main></body></html>",
+        "https://example.com/tool-c": f"<html><body><main><p>{shared} gamma</p></main></body></html>",
+    }
+    res_eeat = eeat.run(list(dup_pages.keys()), dup_pages, is_web_app=True)
+    by_id = {c.id: c for c in res_eeat.checks}
+    assert by_id["template_duplication_risk"].status.value == "WARNING"
+
+    trust = LegalTrustChecker({})
+    res_trust = trust.run(
+        "https://example.com",
+        "<html><body><a href='/about'>About</a></body></html>",
+        {"https://example.com/about": "<html><body><h1>About</h1><p>Our testing methodology and editorial policy are verified first-hand.</p></body></html>"}
+    )
+    trust_by_id = {c.id: c for c in res_trust.checks}
+    assert trust_by_id["editorial_methodology_eeat"].status.value == "PASS"
+

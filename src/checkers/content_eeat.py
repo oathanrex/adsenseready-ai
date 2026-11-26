@@ -570,4 +570,55 @@ class ContentEEATChecker:
                 doc_url="https://developers.google.com/search/docs/fundamentals/creating-helpful-content"
             ))
 
+        # 10. Cross-Page Template Duplication / Scaled Content Risk
+        if len(article_pages) >= 3:
+            shingle_sets: List[Tuple[str, set]] = []
+            for p_url, p_html in list(article_pages.items())[:12]:
+                p_text = self.extract_main_text(p_html).lower()
+                p_tokens = re.sub(r"[^a-z0-9\s]", " ", p_text).split()
+                if len(p_tokens) >= 40:
+                    shingles = {tuple(p_tokens[i:i + 5]) for i in range(len(p_tokens) - 4)}
+                    if shingles:
+                        shingle_sets.append((p_url, shingles))
+
+            max_sim = 0.0
+            dup_pairs = 0
+            for i in range(len(shingle_sets)):
+                for j in range(i + 1, len(shingle_sets)):
+                    s1, s2 = shingle_sets[i][1], shingle_sets[j][1]
+                    union = len(s1 | s2)
+                    if union > 0:
+                        sim = len(s1 & s2) / union
+                        if sim > max_sim:
+                            max_sim = sim
+                        if sim >= 0.50:
+                            dup_pairs += 1
+
+            if dup_pairs == 0 and max_sim < 0.50:
+                pillar.checks.append(CheckResult(
+                    id="template_duplication_risk",
+                    name="Cross-Page Template Originality (Anti-Scaled Content)",
+                    status=CheckStatus.PASS,
+                    severity=Severity.HIGH,
+                    score=3.0,
+                    max_score=3.0,
+                    details=f"Low cross-page body duplication across {len(shingle_sets)} sampled pages (max 5-gram similarity: {max_sim:.0%}).",
+                    doc_url="https://developers.google.com/search/docs/essentials/spam-policies#scaled-content-abuse"
+                ))
+                pillar.earned_score += 3.0
+            else:
+                pillar.checks.append(CheckResult(
+                    id="template_duplication_risk",
+                    name="Cross-Page Template Originality (Anti-Scaled Content)",
+                    status=CheckStatus.WARNING,
+                    severity=Severity.HIGH,
+                    score=0.5,
+                    max_score=3.0,
+                    details=f"Detected {dup_pairs} near-duplicate page pair(s) (max 5-gram similarity: {max_sim:.0%}). Templated pages with swapped keywords trigger 'Low value content' rejections.",
+                    fix_recommendation="Consolidate or add noindex to repetitive/templated tool or locale pages, and write genuinely distinct first-hand content per URL.",
+                    doc_url="https://developers.google.com/search/docs/essentials/spam-policies#scaled-content-abuse"
+                ))
+                pillar.earned_score += 0.5
+            pillar.max_score += 3.0
+
         return pillar
