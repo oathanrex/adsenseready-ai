@@ -4,7 +4,7 @@ Pillar 3: Technical Crawlability & Web Health Checker
 
 import re
 import json
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from ..models import PillarResult, CheckResult, CheckStatus, Severity
 
 
@@ -30,7 +30,8 @@ class TechSEOChecker:
         sitemap_redirect_checked_count: int = 0,
         sitemap_redirect_count: int = 0,
         sitemap_redirect_to_listed_count: int = 0,
-        sitemap_redirect_samples: Optional[list] = None
+        sitemap_redirect_samples: Optional[list] = None,
+        sitemap_urls: Optional[List[str]] = None
     ) -> PillarResult:
         pillar = PillarResult(
             id="technical_seo",
@@ -691,6 +692,51 @@ class TechSEOChecker:
                     max_score=2.0,
                     details=f"All {len(json_ld_matches)} JSON-LD structured data blocks parsed cleanly with valid schema syntax.",
                     doc_url="https://developers.google.com/search/docs/appearance/structured-data/intro-structured-data"
+                ))
+                pillar.earned_score += 2.0
+            pillar.max_score += 2.0
+
+        # Doorway / Parameter-Swapped URL Pattern Risk
+        if sitemap_urls and len(sitemap_urls) >= 4:
+            unit_family = [u for u in sitemap_urls if re.search(r'-(?:\d+kb|\d+mb|\d+px|\d+dpi)\b', u, re.I)]
+            query_variants = [u for u in sitemap_urls if re.search(r'[?&](?:lang|locale|size|format)=', u, re.I)]
+            locale_prefixes = set()
+            for u in sitemap_urls:
+                m = re.search(r'https?://[^/]+/([a-z]{2})(?:/|$)', u, re.I)
+                if m:
+                    locale_prefixes.add(m.group(1).lower())
+
+            risk_notes = []
+            if len(unit_family) >= 4:
+                risk_notes.append(f"{len(unit_family)} numeric/unit-swapped URLs (e.g. -20kb/-50kb)")
+            if len(locale_prefixes) >= 8:
+                risk_notes.append(f"{len(locale_prefixes)} locale prefix directories in sitemap")
+            if query_variants:
+                risk_notes.append(f"{len(query_variants)} parameterized ?lang=/?locale= URLs")
+
+            if risk_notes:
+                pillar.checks.append(CheckResult(
+                    id="doorway_url_pattern_risk",
+                    name="Doorway & Scaled URL Pattern Audit",
+                    status=CheckStatus.WARNING,
+                    severity=Severity.HIGH,
+                    score=0.5,
+                    max_score=2.0,
+                    details=f"Potential doorway/scaled URL patterns in sitemap: {'; '.join(risk_notes)}. Ensure each URL has genuinely distinct content or consolidate/noindex.",
+                    fix_recommendation="Differentiate unit-swapped tool pages with unique real-world examples, and noindex/remove machine-translated locale variants from sitemap.",
+                    doc_url="https://developers.google.com/search/docs/essentials/spam-policies#doorways"
+                ))
+                pillar.earned_score += 0.5
+            else:
+                pillar.checks.append(CheckResult(
+                    id="doorway_url_pattern_risk",
+                    name="Doorway & Scaled URL Pattern Audit",
+                    status=CheckStatus.PASS,
+                    severity=Severity.MEDIUM,
+                    score=2.0,
+                    max_score=2.0,
+                    details="No doorway, parameter-swapped, or scaled locale URL bloat patterns detected in sitemap.",
+                    doc_url="https://developers.google.com/search/docs/essentials/spam-policies#doorways"
                 ))
                 pillar.earned_score += 2.0
             pillar.max_score += 2.0

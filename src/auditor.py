@@ -10,7 +10,7 @@ import time
 import urllib.request
 import urllib.parse
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional, Tuple
 
 import urllib.error
@@ -216,6 +216,7 @@ class AdSenseAuditor:
         ads_txt_content = None
         sitemap_duplicate_count = 0
         sitemap_total_urls = 0
+        unique_sitemap_urls: List[str] = []
         sitemap_redirect_checked = False
         sitemap_redirect_checked_count = 0
         sitemap_redirect_count = 0
@@ -360,7 +361,8 @@ class AdSenseAuditor:
             sitemap_redirect_checked_count=sitemap_redirect_checked_count,
             sitemap_redirect_count=sitemap_redirect_count,
             sitemap_redirect_to_listed_count=sitemap_redirect_to_listed_count,
-            sitemap_redirect_samples=sitemap_redirect_samples
+            sitemap_redirect_samples=sitemap_redirect_samples,
+            sitemap_urls=unique_sitemap_urls
         )
         p4 = SiteStructureChecker(self.rules).run(
             homepage_html, crawled_pages, internal_links,
@@ -368,7 +370,11 @@ class AdSenseAuditor:
         )
         p5 = PolicyProhibitedChecker(self.rules).run(homepage_html, crawled_pages, target_url=target_url)
         p6 = AdLayoutChecker(self.rules).run(homepage_html)
-        p7 = OrganicFootprintChecker(self.rules).run(homepage_html)
+        p7 = OrganicFootprintChecker(self.rules).run(
+            homepage_html,
+            base_url=target_url,
+            crawled_pages=crawled_pages
+        )
 
         pillars = {
             "legal_trust": p1,
@@ -453,7 +459,7 @@ class AdSenseAuditor:
 
         return AuditReport(
             target_url=target_url,
-            timestamp=datetime.utcnow().isoformat() + "Z",
+            timestamp=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             policy_version=self.rules.get("version", "2026.11.1"),
             total_score=total_score,
             max_possible=max_possible,

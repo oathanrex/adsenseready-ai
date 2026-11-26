@@ -127,3 +127,53 @@ def test_template_duplication_and_methodology_checks():
     trust_by_id = {c.id: c for c in res_trust.checks}
     assert trust_by_id["editorial_methodology_eeat"].status.value == "PASS"
 
+
+def test_hreflang_noindex_canonical_and_doorway_checks():
+    """Verify hreflang<->noindex, X-Robots-Tag, canonical trailing slash, and doorway URL pattern checks."""
+    from src.checkers.organic_footprint import OrganicFootprintChecker
+    from src.checkers.tech_seo import TechSEOChecker
+
+    org = OrganicFootprintChecker({})
+    html_conflict = '''
+    <html><head>
+      <link rel="canonical" href="https://example.com/" />
+      <link rel="alternate" hreflang="x-default" href="https://example.com/" />
+      <link rel="alternate" hreflang="es" href="https://example.com/es/" />
+    </head><body></body></html>
+    '''
+    res_org = org.run(
+        html_conflict,
+        base_url="https://example.com",
+        crawled_pages={"https://example.com/es/": "<html><head><meta name='robots' content='noindex, follow'></head></html>"},
+        page_headers={"https://example.com/es/": {"X-Robots-Tag": "noindex, follow"}}
+    )
+    org_by_id = {c.id: c for c in res_org.checks}
+    assert org_by_id["canonical_slash_host_consistency"].status.value == "PASS"  # both normalize path '/'
+    assert org_by_id["hreflang_integrity"].status.value == "FAIL"
+    assert org_by_id["multi_page_noindex_audit"].status.value == "WARNING"
+
+    res_mismatch = org.run(
+        "<html><head><link rel='canonical' href='https://example.com/tool/' /></head></html>",
+        base_url="https://example.com/tool"
+    )
+    assert {c.id: c for c in res_mismatch.checks}["canonical_slash_host_consistency"].status.value == "WARNING"
+
+    tech = TechSEOChecker({})
+    res_tech = tech.run(
+        "https://example.com",
+        "<html><head><meta name='viewport' content='width=device-width'></head></html>",
+        "User-agent: *\nAllow: /",
+        True,
+        "https://example.com/sitemap.xml",
+        0.1,
+        sitemap_urls=[
+            "https://example.com/compress-20kb",
+            "https://example.com/compress-50kb",
+            "https://example.com/compress-100kb",
+            "https://example.com/compress-200kb",
+        ]
+    )
+    tech_by_id = {c.id: c for c in res_tech.checks}
+    assert tech_by_id["doorway_url_pattern_risk"].status.value == "WARNING"
+
+

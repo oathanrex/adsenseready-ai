@@ -19,6 +19,8 @@ READY_SITE_HTML = """<!DOCTYPE html>
       "url": "https://demotechjournal.com"
     }
     </script>
+    <script>window.dataLayer = window.dataLayer || []; function gtag(){dataLayer.push(arguments);} gtag('consent', 'default', {ad_storage: 'denied'});</script>
+    <script src="https://fundingchoicesmessages.google.com/i/pub-1234567890123456"></script>
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1234567890123456" crossorigin="anonymous"></script>
 </head>
 <body>
@@ -27,10 +29,11 @@ READY_SITE_HTML = """<!DOCTYPE html>
         <nav class="menu">
             <ul>
                 <li><a href="https://demotechjournal.com/">Home</a></li>
+                <li><a href="https://demotechjournal.com/blog/">Blog</a></li>
                 <li><a href="https://demotechjournal.com/cloud/">Cloud Engineering</a></li>
                 <li><a href="https://demotechjournal.com/devops/">DevOps</a></li>
                 <li><a href="https://demotechjournal.com/architecture/">System Design</a></li>
-                <li><a href="https://demotechjournal.com/about-us/">About Us</a></li>
+                <li><a href="https://demotechjournal.com/about-us/">About Us &amp; Testing Methodology</a></li>
                 <li><a href="https://demotechjournal.com/contact-us/">Contact Us</a></li>
             </ul>
         </nav>
