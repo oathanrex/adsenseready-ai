@@ -351,6 +351,10 @@ class AdSenseAuditor:
         # 5. Execute 7-Pillar Checkers
         p1 = LegalTrustChecker(self.rules).run(target_url, homepage_html, crawled_pages)
         p2 = ContentEEATChecker(self.rules).run(article_candidates, sample_articles, is_web_app=is_app)
+        has_body_duplication = any(
+            c.id == "template_duplication_risk" and c.status != CheckStatus.PASS
+            for c in p2.checks
+        )
         p3 = TechSEOChecker(self.rules).run(
             target_url, homepage_html, robots_txt, sitemap_found, sitemap_url, latency,
             ads_txt=ads_txt_content,
@@ -362,7 +366,8 @@ class AdSenseAuditor:
             sitemap_redirect_count=sitemap_redirect_count,
             sitemap_redirect_to_listed_count=sitemap_redirect_to_listed_count,
             sitemap_redirect_samples=sitemap_redirect_samples,
-            sitemap_urls=unique_sitemap_urls
+            sitemap_urls=unique_sitemap_urls,
+            has_body_duplication=has_body_duplication
         )
         p4 = SiteStructureChecker(self.rules).run(
             homepage_html, crawled_pages, internal_links,

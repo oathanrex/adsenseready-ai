@@ -159,21 +159,60 @@ def test_hreflang_noindex_canonical_and_doorway_checks():
     assert {c.id: c for c in res_mismatch.checks}["canonical_slash_host_consistency"].status.value == "WARNING"
 
     tech = TechSEOChecker({})
-    res_tech = tech.run(
+    unit_urls = [
+        "https://example.com/compress-20kb",
+        "https://example.com/compress-50kb",
+        "https://example.com/compress-100kb",
+        "https://example.com/compress-200kb",
+    ]
+    # Without body duplication, distinct unit-variant pages should PASS
+    res_tech_distinct = tech.run(
         "https://example.com",
         "<html><head><meta name='viewport' content='width=device-width'></head></html>",
         "User-agent: *\nAllow: /",
         True,
         "https://example.com/sitemap.xml",
         0.1,
-        sitemap_urls=[
-            "https://example.com/compress-20kb",
-            "https://example.com/compress-50kb",
-            "https://example.com/compress-100kb",
-            "https://example.com/compress-200kb",
-        ]
+        sitemap_urls=unit_urls,
+        has_body_duplication=False
     )
-    tech_by_id = {c.id: c for c in res_tech.checks}
-    assert tech_by_id["doorway_url_pattern_risk"].status.value == "WARNING"
+    assert {c.id: c for c in res_tech_distinct.checks}["doorway_url_pattern_risk"].status.value == "PASS"
+
+    # With body duplication, unit-variant pages trigger WARNING
+    res_tech_dup = tech.run(
+        "https://example.com",
+        "<html><head><meta name='viewport' content='width=device-width'></head></html>",
+        "User-agent: *\nAllow: /",
+        True,
+        "https://example.com/sitemap.xml",
+        0.1,
+        sitemap_urls=unit_urls,
+        has_body_duplication=True
+    )
+    assert {c.id: c for c in res_tech_dup.checks}["doorway_url_pattern_risk"].status.value == "WARNING"
+
+
+def test_generator_neutrality_and_multilingual_generality():
+    """Verify ArticleGenerator uses neutral defaults and multilingual sitemaps aren't false-flagged."""
+    from src.generator import ArticleGenerator
+    from src.checkers.tech_seo import TechSEOChecker
+
+    art = ArticleGenerator.generate("Caching Strategies")
+    assert "oathan" not in art.lower()
+    assert "by up to 60%" not in art.lower()
+
+    tech = TechSEOChecker({})
+    multilingual_urls = [f"https://docs.example.org/{loc}/guide" for loc in ["en", "es", "fr", "de", "pt", "it", "ja", "ko", "zh", "ar"]]
+    res = tech.run(
+        "https://docs.example.org",
+        "<html><head><meta name='viewport' content='width=device-width'></head></html>",
+        "User-agent: *\nAllow: /",
+        True,
+        "https://docs.example.org/sitemap.xml",
+        0.1,
+        sitemap_urls=multilingual_urls
+    )
+    assert {c.id: c for c in res.checks}["doorway_url_pattern_risk"].status.value == "PASS"
+
 
 

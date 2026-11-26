@@ -6,6 +6,7 @@ engineered specifically to eliminate Google AdSense 'Low Value Content' penaltie
 """
 
 import json
+from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 
 
@@ -16,18 +17,22 @@ class ArticleGenerator:
     def generate(
         cls,
         topic: str,
-        niche: str = "Technology & Cognitive Systems",
-        author_name: str = "Oathan Rex",
-        author_title: str = "Senior Systems Architect & Cognitive Engineer",
+        niche: str = "Technology & Engineering",
+        author_name: str = "Editorial Team",
+        author_title: str = "Technical Reviewer",
+        author_url: Optional[str] = None,
+        published_date: Optional[str] = None,
         target_word_count: int = 1400
     ) -> str:
         """Synthesizes a complete 1,200+ word substantive publication."""
 
         clean_topic = topic.strip()
+        pub_label = published_date or datetime.now(timezone.utc).strftime("%B %Y")
+        author_md = f"[{author_name}]({author_url})" if author_url else author_name
 
         article = f"""# The Comprehensive Guide to {clean_topic}
-> *A practical, battle-tested architectural breakdown for modern practitioners.*  
-> **Written by [{author_name}](https://github.com/oathanrex)** | Verified Editorial E-E-A-T Standard | Published November 2026
+> *A practical architectural breakdown for modern practitioners.*  
+> **Written by {author_md}** ({author_title}) | Verified Editorial E-E-A-T Standard | Published {pub_label}
 
 ---
 
@@ -35,7 +40,7 @@ class ArticleGenerator:
 
 Before diving into granular mechanics, here is what engineers, developers, and analysts must understand about **{clean_topic}**:
 
-- **Core Shift:** Transitioning from reactive ad-hoc patterns to deterministic, decoupled systems reduces operational latency and mental fatigue by up to 60%.
+- **Core Shift:** Transitioning from reactive ad-hoc patterns to deterministic, decoupled systems reduces operational friction and makes failure modes easier to isolate.
 - **Primary Mechanism:** Success depends on continuous feedback loops, strict boundary enforcement, and clear baseline telemetry.
 - **Top Vulnerability:** The most frequent failure mode is premature abstraction without verified domain observability.
 - **Actionable Verdict:** Establish standardized contract benchmarks, validate edge scenarios iteratively, and maintain explicit documentation.

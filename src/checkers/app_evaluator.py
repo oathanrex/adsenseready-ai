@@ -2,7 +2,7 @@
 AdSenseReady-AI: Web Application & SaaS AdSense Evaluator
 ---------------------------------------------------------
 Specialized audit engine for interactive web applications, SaaS tools, calculators,
-and utility portals (like perspectivefix.app).
+and utility portals.
 
 Web apps fail AdSense reviews because Google's crawler expects text content,
 while the app provides interactive UI. This module checks and enforces the 5 mandatory
