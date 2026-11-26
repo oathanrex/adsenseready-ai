@@ -1,17 +1,18 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=77.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "adsenseready-ai"
-version = "2026.11.1"
-description = "Universal AI Skill, Native MCP Server & 360-Degree Automated Audit Engine for 100% Google AdSense Approval Readiness"
+version = "2026.11.3"
+description = "7-pillar Google AdSense readiness audit CLI and MCP server for blogs, SaaS, and docs"
 readme = "README.md"
 authors = [
     { name = "Oathan Rex", email = "oathanrex@gmail.com" }
 ]
-license = { text = "MIT" }
-requires-python = ">=3.8"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
 keywords = [
     "adsense",
     "google-adsense",
@@ -25,9 +26,8 @@ keywords = [
     "eeat"
 ]
 classifiers = [
-    "Development Status :: 5 - Production/Stable",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -48,3 +48,9 @@ Issues = "https://github.com/oathanrex/adsenseready-ai/issues"
 [project.scripts]
 adsense-audit = "src.cli:main"
 adsenseready-mcp = "src.mcp_server:main"
+
+[tool.setuptools]
+packages = ["src", "src.checkers", "policies", "scripts"]
+
+[tool.setuptools.package-data]
+policies = ["*.json"]

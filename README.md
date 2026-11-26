@@ -239,6 +239,21 @@ python -m pytest tests/
 
 ---
 
+## 📦 Releases & PyPI
+
+Releases are tag-driven: pushing a `v*` tag creates a GitHub Release and publishes
+the package to PyPI via OIDC Trusted Publishing. See
+[`docs/RELEASING.md`](./docs/RELEASING.md) for the one-time PyPI setup and the
+exact tag commands.
+
+```bash
+# After the release is published:
+pip install adsenseready-ai
+adsense-audit https://your-site.com --profile blog
+```
+
+---
+
 ## 🤝 Contributing
 
 Contributions, feedback, and new policy heuristics are welcomed!
