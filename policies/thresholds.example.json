@@ -1,0 +1,14 @@
+{
+  "profile": "docs",
+  "thresholds": {
+    "min_articles": 15,
+    "recommended_articles": 25,
+    "min_avg_words": 700,
+    "acceptable_avg_words": 500,
+    "readability_min": 40,
+    "readability_max": 80,
+    "primary_source_ratio": 0.4,
+    "freshness_ratio": 0.5,
+    "approval_score": 88
+  }
+}

@@ -16,6 +16,7 @@ from typing import Dict, Any, List, Optional, Tuple
 import urllib.error
 
 from .models import AuditReport, PillarResult, CheckResult, CheckStatus, Severity
+from .profiles import resolve_thresholds
 
 
 class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -45,9 +46,27 @@ RULES_PATH = BASE_DIR / "policies" / "adsense_rules.json"
 
 
 class AdSenseAuditor:
-    def __init__(self, rules_path: Optional[Path] = None, user_agent: Optional[str] = None):
+    def __init__(
+        self,
+        rules_path: Optional[Path] = None,
+        user_agent: Optional[str] = None,
+        profile: Optional[str] = None,
+        thresholds: Optional[Dict[str, Any]] = None,
+        strict: bool = False,
+    ):
         self.rules_path = rules_path or RULES_PATH
         self.rules = self._load_rules()
+        strict_score = self.rules.get("strict_mode_threshold") if strict else None
+        self.thresholds = resolve_thresholds(
+            profile=profile,
+            overrides=thresholds,
+            strict=strict,
+            strict_score=strict_score,
+        )
+        # Checkers read thresholds from the rules dict; keep the loaded policy
+        # file untouched so a single Auditor instance can be reused safely.
+        self.rules = dict(self.rules)
+        self.rules["thresholds"] = self.thresholds
         self.user_agent = user_agent or "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AdSenseReady-AI/2026.11 Crawler"
         self.session_headers = {
             "User-Agent": self.user_agent,
@@ -451,11 +470,14 @@ class AdSenseAuditor:
             for tip in cms_data["customized_tips"][:2]:
                 action_plan.append(f"[{cms_data['cms']} OPTIMIZATION] {tip}")
 
-        # Verdict Logic
-        if len(all_blockers) == 0 and normalized_score >= 85.0:
+        # Verdict Logic (approval/risk cutoffs are profile-configurable heuristics,
+        # not official Google thresholds).
+        approval_score = float(self.thresholds.get("approval_score", 85.0))
+        risk_score = float(self.thresholds.get("risk_score", 65.0))
+        if len(all_blockers) == 0 and normalized_score >= approval_score:
             verdict = "APPROVED_READY"
             summary_verdict = "10/10 READY FOR ADSENSE APPROVAL (High Confidence)"
-        elif len(all_blockers) == 0 and normalized_score >= 65.0:
+        elif len(all_blockers) == 0 and normalized_score >= risk_score:
             verdict = "AT_RISK"
             summary_verdict = "AT RISK - POLISH REQUIRED (Moderate Confidence)"
         else:
@@ -466,6 +488,8 @@ class AdSenseAuditor:
             target_url=target_url,
             timestamp=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             policy_version=self.rules.get("version", "2026.11.1"),
+            profile=self.thresholds.get("profile", "blog"),
+            thresholds=self.thresholds,
             total_score=total_score,
             max_possible=max_possible,
             verdict=verdict,

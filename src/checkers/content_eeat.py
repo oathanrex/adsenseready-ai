@@ -6,6 +6,7 @@ Advanced semantic analysis, Flesch Reading Ease, and anti-AI-spam validation.
 import re
 from typing import List, Dict, Any, Tuple
 from ..models import PillarResult, CheckResult, CheckStatus, Severity
+from ..profiles import BLOG_THRESHOLDS, resolve_thresholds
 
 try:
     from bs4 import BeautifulSoup
@@ -18,6 +19,19 @@ class ContentEEATChecker:
     def __init__(self, rules: Dict[str, Any]):
         self.rules = rules.get("pillars", {}).get("content_eeat", {})
         self.weight = self.rules.get("weight", 25)
+        # Thresholds are heuristics, not Google policy: they come from the
+        # selected profile and can be overridden per audit. Direct
+        # ContentEEATChecker({}) construction keeps the legacy blog defaults.
+        self.thresholds = rules.get("thresholds") or resolve_thresholds()
+        self.auto_web_app = bool(self.thresholds.get("auto_web_app", False))
+        self.profile_name = self.thresholds.get("profile", "blog")
+
+    def threshold(self, key: str, is_web_app: bool = False):
+        """Effective configured value for a threshold key."""
+        config = self.thresholds
+        if is_web_app and self.auto_web_app:
+            config = self.thresholds.get("web_app", self.thresholds)
+        return config.get(key, BLOG_THRESHOLDS.get(key))
 
     def extract_main_text(self, html: str) -> str:
         """Extracts substantive article content, removing headers, footers, nav, and sidebars."""
@@ -93,47 +107,20 @@ class ContentEEATChecker:
 
         total_articles = len(article_urls)
 
-        # 1. Total Article Volume
-        if is_web_app:
-            if total_articles >= 4:
-                pillar.checks.append(CheckResult(
-                    id="minimum_article_count",
-                    name="Article Inventory Volume",
-                    status=CheckStatus.PASS,
-                    severity=Severity.BLOCKER,
-                    score=6.0,
-                    max_score=6.0,
-                    details=f"Web Application mode: {total_articles} comprehensive documentation guides detected. Complies with Google AdSense utility tool content standards.",
-                    doc_url="https://support.google.com/adsense/answer/10502938"
-                ))
-                pillar.earned_score += 6.0
-            elif total_articles >= 2:
-                pillar.checks.append(CheckResult(
-                    id="minimum_article_count",
-                    name="Article Inventory Volume",
-                    status=CheckStatus.WARNING,
-                    severity=Severity.BLOCKER,
-                    score=3.5,
-                    max_score=6.0,
-                    details=f"Web Application mode: Borderline documentation volume ({total_articles} guides found).",
-                    fix_recommendation="Publish 2 additional in-depth technical guides or how-it-works articles.",
-                    doc_url="https://support.google.com/adsense/answer/10502938"
-                ))
-                pillar.earned_score += 3.5
-            else:
-                pillar.checks.append(CheckResult(
-                    id="minimum_article_count",
-                    name="Article Inventory Volume",
-                    status=CheckStatus.FAIL,
-                    severity=Severity.HIGH,
-                    score=1.0,
-                    max_score=6.0,
-                    details=f"Web Application mode: Insufficient documentation ({total_articles} guides found).",
-                    fix_recommendation="Publish a minimum of 4 comprehensive technical guides for your utility app.",
-                    doc_url="https://support.google.com/adsense/answer/10502938"
-                ))
-                pillar.earned_score += 1.0
-        elif total_articles >= 25:
+        # 1. Total Article Volume (thresholds from the selected profile)
+        min_articles = int(self.threshold("min_articles", is_web_app))
+        borderline_articles = min(int(self.threshold("borderline_articles", is_web_app)), min_articles)
+        recommended_articles = int(self.threshold("recommended_articles", is_web_app))
+        noun = "documentation guides" if is_web_app else "substantive posts"
+
+        if total_articles >= min_articles:
+            details = (
+                f"Web Application mode: {total_articles} comprehensive documentation guides detected. "
+                "Complies with Google AdSense utility tool content standards."
+                if is_web_app else
+                f"Healthy publication volume detected ({total_articles} substantive posts found). "
+                f"Meets the configured profile target of {min_articles}+ posts."
+            )
             pillar.checks.append(CheckResult(
                 id="minimum_article_count",
                 name="Article Inventory Volume",
@@ -141,11 +128,11 @@ class ContentEEATChecker:
                 severity=Severity.BLOCKER,
                 score=6.0,
                 max_score=6.0,
-                details=f"Healthy publication volume detected ({total_articles} substantive posts found). Meets Google manual review criteria.",
+                details=details,
                 doc_url="https://support.google.com/adsense/answer/10502938"
             ))
             pillar.earned_score += 6.0
-        elif total_articles >= 15:
+        elif total_articles >= borderline_articles:
             pillar.checks.append(CheckResult(
                 id="minimum_article_count",
                 name="Article Inventory Volume",
@@ -153,8 +140,13 @@ class ContentEEATChecker:
                 severity=Severity.BLOCKER,
                 score=3.5,
                 max_score=6.0,
-                details=f"Borderline article volume ({total_articles} posts). Google manual raters expect 20-30+ fully fleshed posts.",
-                fix_recommendation="Publish at least 10 more original, high-substance articles before submitting to AdSense.",
+                details=f"Borderline volume ({total_articles} {noun}); profile expects {min_articles}+.",
+                fix_recommendation=(
+                    f"Publish at least {min_articles - total_articles} more in-depth guides or how-it-works articles."
+                    if is_web_app else
+                    f"Publish at least {min_articles - total_articles} more original, high-substance articles "
+                    f"({min_articles}-{recommended_articles} is the configured target)."
+                ),
                 doc_url="https://support.google.com/adsense/answer/10502938"
             ))
             pillar.earned_score += 3.5
@@ -166,8 +158,12 @@ class ContentEEATChecker:
                 severity=Severity.HIGH,
                 score=1.0,
                 max_score=6.0,
-                details=f"Critically low article volume ({total_articles} posts found). Immediate risk of 'Site Under Construction' or 'Low Value Content'.",
-                fix_recommendation="Publish a minimum of 20 to 30 comprehensive, original articles prior to application.",
+                details=f"Critically low volume ({total_articles} {noun} found). Immediate risk of 'Site Under Construction' or 'Low Value Content'.",
+                fix_recommendation=(
+                    f"Publish a minimum of {min_articles} comprehensive technical guides for this site."
+                    if is_web_app else
+                    f"Publish a minimum of {min_articles}-{recommended_articles} comprehensive, original articles prior to application."
+                ),
                 doc_url="https://support.google.com/adsense/answer/10502938"
             ))
             pillar.earned_score += 1.0
@@ -259,8 +255,9 @@ class ContentEEATChecker:
         avg_readability = round(sum(readability_scores) / len(readability_scores), 1) if readability_scores else 60.0
 
         # 2. Average Word Count (Thin Content Check)
-        min_depth = 400 if is_web_app else 800
-        acceptable_depth = 300 if is_web_app else 600
+        min_depth = int(self.threshold("min_avg_words", is_web_app))
+        acceptable_depth = int(self.threshold("acceptable_avg_words", is_web_app))
+        recommended_depth = int(self.threshold("recommended_avg_words", is_web_app))
 
         if avg_words >= min_depth:
             pillar.checks.append(CheckResult(
@@ -295,14 +292,16 @@ class ContentEEATChecker:
                 score=1.5,
                 max_score=5.0,
                 details=f"Low content substance ({avg_words} words avg). Triggers AdSense 'Thin Content / Low Value' penalty.",
-                fix_recommendation="Expand articles to at least 800-1200+ words with unique insights, data, and structured explanations.",
+                fix_recommendation=f"Expand articles to at least {min_depth}-{recommended_depth}+ words with unique insights, data, and structured explanations.",
                 doc_url="https://developers.google.com/search/docs/essentials/spam-policies#thin-content"
             ))
             pillar.earned_score += 1.5
         pillar.max_score += 5.0
 
         # 3. Readability & Natural Flow Score (Flesch-Kincaid)
-        if 45.0 <= avg_readability <= 75.0:
+        readability_min = float(self.threshold("readability_min", is_web_app))
+        readability_max = float(self.threshold("readability_max", is_web_app))
+        if readability_min <= avg_readability <= readability_max:
             pillar.checks.append(CheckResult(
                 id="readability_index",
                 name="Reading Flow & Natural Prose Index",
@@ -463,7 +462,7 @@ class ContentEEATChecker:
         # that a plain keyword/number scan can never detect on its own.
         if article_pages:
             citation_ratio = articles_with_citation / len(article_pages)
-            if citation_ratio >= 0.5:
+            if citation_ratio >= float(self.threshold("primary_source_ratio", is_web_app)):
                 pillar.checks.append(CheckResult(
                     id="primary_source_citations",
                     name="Primary-Source Regulatory / Authority Citations",
@@ -520,7 +519,7 @@ class ContentEEATChecker:
         # count and originality are both fine.
         if article_pages:
             freshness_ratio = articles_with_freshness / len(article_pages)
-            if freshness_ratio >= 0.6:
+            if freshness_ratio >= float(self.threshold("freshness_ratio", is_web_app)):
                 pillar.checks.append(CheckResult(
                     id="content_freshness_signal",
                     name="Content Freshness Signal (Last Updated / dateModified)",
@@ -583,6 +582,7 @@ class ContentEEATChecker:
 
             max_sim = 0.0
             dup_pairs = 0
+            duplication_limit = float(self.threshold("template_duplication_ratio", is_web_app))
             for i in range(len(shingle_sets)):
                 for j in range(i + 1, len(shingle_sets)):
                     s1, s2 = shingle_sets[i][1], shingle_sets[j][1]
@@ -591,10 +591,10 @@ class ContentEEATChecker:
                         sim = len(s1 & s2) / union
                         if sim > max_sim:
                             max_sim = sim
-                        if sim >= 0.50:
+                        if sim >= duplication_limit:
                             dup_pairs += 1
 
-            if dup_pairs == 0 and max_sim < 0.50:
+            if dup_pairs == 0 and max_sim < duplication_limit:
                 pillar.checks.append(CheckResult(
                     id="template_duplication_risk",
                     name="Cross-Page Template Originality (Anti-Scaled Content)",

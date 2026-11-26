@@ -68,6 +68,8 @@ class AuditReport:
     max_possible: float
     verdict: str  # "APPROVED_READY" | "AT_RISK" | "REJECTION_GUARANTEED"
     summary_verdict: str
+    profile: str = "blog"
+    thresholds: Dict[str, Any] = field(default_factory=dict)
     pillars: Dict[str, PillarResult] = field(default_factory=dict)
     all_blockers: List[CheckResult] = field(default_factory=list)
     action_plan: List[str] = field(default_factory=list)

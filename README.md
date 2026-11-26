@@ -76,10 +76,49 @@ python -m src.cli https://mytechblog.com --format markdown --output report.md
 python -m src.cli https://mytechblog.com --format json --output report.json
 ```
 
+### 2b. Profiles & Configurable Thresholds
+
+Article-volume, word-count, readability, citation, freshness and verdict cutoffs are
+**heuristics, not official Google policy**. Pick a profile that matches the site, or
+override individual values. Every report records the profile and effective thresholds.
+
+| Profile | Best for | Article target | Avg words (pass / acceptable) |
+|---------|----------|----------------|-------------------------------|
+| `blog` (default) | Editorial blogs, magazines | 25+ (15 borderline) | 800 / 600 |
+| `saas` | Interactive tools, web apps | 4+ (2 borderline) | 400 / 300 |
+| `docs` | Documentation, knowledge bases | 12+ (6 borderline) | 600 / 400 |
+
+The default `blog` profile keeps the historical behavior of auto-relaxing these
+thresholds when an interactive web app is detected; `--profile saas` forces the
+utility-app thresholds regardless of detection.
+
+```bash
+# Force the SaaS profile
+python -m src.cli https://my-tool.com --profile saas
+
+# Override individual heuristics (repeatable)
+python -m src.cli https://myblog.com --threshold min_articles=10 --threshold min_avg_words=500
+
+# Load a saved config (see policies/thresholds.example.json)
+python -m src.cli https://docs.example.com --config policies/thresholds.example.json
+
+# Require the strict approval cutoff from adsense_rules.json (default 92)
+python -m src.cli https://myblog.com --strict
+```
+
+Available keys: `min_articles`, `borderline_articles`, `recommended_articles`,
+`min_avg_words`, `acceptable_avg_words`, `recommended_avg_words`,
+`readability_min`, `readability_max`, `primary_source_ratio`, `freshness_ratio`,
+`template_duplication_ratio`, `approval_score`, `risk_score`. Prefix any key with
+`web_app_` to change only the legacy auto-detected web-app fallback.
+
+MCP clients can pass `profile`, `thresholds` and `strict` to `audit_website`; the
+web studio has a profile selector.
+
 ### 3. Eliminate Low-Value Content & Expand Articles
 ```bash
 # Diagnose thin content and generate a 1200+ word expansion blueprint
-python -m src.cli --fix-content "https://mytechblog.com/my-short-article" --topic "Article Topic" --author "Oathan Rex"
+python -m src.cli --fix-content "https://mytechblog.com/my-short-article" --topic "Article Topic" --author "Editorial Team"
 ```
 
 ### 4. Launch Local Web Studio

@@ -29,7 +29,7 @@ class AuditReporter:
             console.print(Panel(
                 f"[bold white]{report.target_url}[/bold white]\n"
                 f"Status: [{status_color} bold]{report.summary_verdict}[/{status_color} bold]\n"
-                f"Overall Score: [bold cyan]{report.normalized_score} / 100[/bold cyan] (Policy Ruleset: v{report.policy_version})",
+                f"Overall Score: [bold cyan]{report.normalized_score} / 100[/bold cyan] (Policy Ruleset: v{report.policy_version}, Profile: {getattr(report, 'profile', 'blog')})",
                 title="[bold yellow]🎯 Google AdSense Readiness Audit Report[/bold yellow]",
                 border_style=status_color
             ))
@@ -405,6 +405,8 @@ class AuditReporter:
             "target_url": report.target_url,
             "timestamp": report.timestamp,
             "policy_version": report.policy_version,
+            "profile": getattr(report, "profile", "blog"),
+            "thresholds": getattr(report, "thresholds", {}),
             "total_score": report.total_score,
             "max_possible": report.max_possible,
             "normalized_score": report.normalized_score,

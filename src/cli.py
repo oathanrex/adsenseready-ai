@@ -3,6 +3,7 @@ AdSenseReady-AI: Command Line Interface
 """
 
 import sys
+import json
 import argparse
 from pathlib import Path
 
@@ -18,6 +19,30 @@ from src.server import start_server
 from src.enhancer import LowValueContentEliminator
 from src.generator import ArticleGenerator
 from src.badge import generate_svg_badge
+from src.profiles import (
+    DEFAULT_PROFILE,
+    PROFILES,
+    load_config,
+    parse_threshold_pairs,
+    resolve_thresholds,
+)
+
+
+def build_profile_config(args):
+    """Combine --config, --profile and repeatable --threshold overrides.
+
+    Precedence: --threshold > --profile > config file > default profile.
+    """
+    profile = args.profile or DEFAULT_PROFILE
+    overrides = {}
+    if args.config:
+        config_profile, config_overrides = load_config(args.config)
+        if args.profile is None and config_profile:
+            profile = config_profile
+        overrides.update(config_overrides)
+    overrides.update(parse_threshold_pairs(args.threshold))
+    resolve_thresholds(profile, overrides)  # validate early with a friendly CLI error
+    return profile, overrides
 
 
 def main():
@@ -29,6 +54,9 @@ Examples:
   python -m src.cli https://mytechblog.com
   python -m src.cli https://mytechblog.com --format markdown --output adsense_report.md
   python -m src.cli https://mytechblog.com --format json --output report.json
+  python -m src.cli https://mytechblog.com --profile saas
+  python -m src.cli https://mytechblog.com --threshold min_articles=10 --threshold min_avg_words=500
+  python -m src.cli https://mytechblog.com --config policies/thresholds.example.json
   python -m src.cli --sync-policies
   python -m src.cli --demo
         """
@@ -46,8 +74,28 @@ Examples:
     parser.add_argument("--badge", help="Generate a Retina-ready SVG AdSense readiness badge to specified file path")
     parser.add_argument("--topic", default="Technical Guide", help="Topic name for the article expansion (default: 'Technical Guide')")
     parser.add_argument("--author", default="Editorial Team", help="Author name for E-E-A-T credentials box (default: 'Editorial Team')")
+    parser.add_argument(
+        "--profile", choices=sorted(PROFILES), default=None,
+        help="Audit profile: blog (default, auto-relaxes for detected web apps), saas, or docs"
+    )
+    parser.add_argument(
+        "--threshold", action="append", metavar="KEY=VALUE", default=[],
+        help="Override a heuristic threshold, e.g. --threshold min_articles=10 (repeatable)"
+    )
+    parser.add_argument(
+        "--config", help="JSON config file containing profile and/or thresholds"
+    )
+    parser.add_argument(
+        "--strict", action="store_true",
+        help="Require the strict approval score from policies/adsense_rules.json (default: 92)"
+    )
 
     args = parser.parse_args()
+
+    try:
+        build_profile_config(args)
+    except (ValueError, OSError, json.JSONDecodeError) as exc:
+        parser.error(str(exc))
 
     if args.generate_article:
         art = ArticleGenerator.generate(args.topic, author_name=args.author)
@@ -59,8 +107,17 @@ Examples:
             print(art)
         return
 
+    profile, profile_overrides = build_profile_config(args)
+
+    def new_auditor():
+        return AdSenseAuditor(
+            profile=profile,
+            thresholds=profile_overrides,
+            strict=args.strict,
+        )
+
     if args.badge and args.url:
-        auditor = AdSenseAuditor()
+        auditor = new_auditor()
         rep = auditor.audit_site(args.url)
         svg = generate_svg_badge(rep.normalized_score, rep.verdict)
         with open(args.badge, "w", encoding="utf-8") as f:
@@ -80,14 +137,14 @@ Examples:
         sys.exit(sync_policies_func())
 
     if args.demo:
-        run_demo(args.format, args.output)
+        run_demo(args.format, args.output, auditor=new_auditor())
         return
 
     if not args.url:
         parser.print_help()
         sys.exit(1)
 
-    auditor = AdSenseAuditor()
+    auditor = new_auditor()
     print(f"[*] Crawling and auditing target site: {args.url} ...")
     report = auditor.audit_site(args.url, max_crawl_pages=args.crawl_depth)
 
@@ -173,9 +230,9 @@ def run_content_fix(source: str, topic: str, author: str, out_format: str, outpu
         print(f"[✓] Full High-Value Content Blueprint saved to: {output_file}")
 
 
-def run_demo(out_format="terminal", output_file=None):
+def run_demo(out_format="terminal", output_file=None, auditor=None):
     from tests.mock_sites.sample_data import READY_SITE_HTML
-    auditor = AdSenseAuditor()
+    auditor = auditor or AdSenseAuditor()
     print("[*] Running demonstration audit on High-Quality Ready Site...")
     report = auditor.audit_site("https://demotechjournal.com", mock_html=READY_SITE_HTML)
     if out_format == "terminal":

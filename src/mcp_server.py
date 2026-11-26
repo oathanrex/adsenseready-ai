@@ -40,6 +40,22 @@ TOOLS = [
                     "type": "integer",
                     "description": "Maximum number of articles to sample (default: 15)",
                     "default": 15
+                },
+                "profile": {
+                    "type": "string",
+                    "enum": ["blog", "saas", "docs"],
+                    "description": "Audit profile controlling heuristic content thresholds (default: blog)",
+                    "default": "blog"
+                },
+                "thresholds": {
+                    "type": "object",
+                    "description": "Optional threshold overrides, e.g. {\"min_articles\": 10, \"min_avg_words\": 500}",
+                    "additionalProperties": {"type": "number"}
+                },
+                "strict": {
+                    "type": "boolean",
+                    "description": "Use the strict approval score from the policy rules (default: false)",
+                    "default": False
                 }
             },
             "required": ["url"]
@@ -173,7 +189,11 @@ def handle_call_tool(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
     if name == "audit_website":
         url = arguments.get("url")
         crawl_depth = arguments.get("crawl_depth", 15)
-        auditor = AdSenseAuditor()
+        auditor = AdSenseAuditor(
+            profile=arguments.get("profile"),
+            thresholds=arguments.get("thresholds"),
+            strict=bool(arguments.get("strict", False)),
+        )
         report = auditor.audit_site(url, max_crawl_pages=crawl_depth)
         md = AuditReporter.to_markdown(report)
         return {

@@ -72,6 +72,17 @@ INDEX_HTML = """<!DOCTYPE html>
             transition: background 0.2s;
         }
         button:hover { background: #1d4ed8; }
+        select {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 0.85rem 1rem;
+            border-radius: 10px;
+            border: 1px solid #475569;
+            background: #0f172a;
+            color: #f8fafc;
+            font-size: 1rem;
+            margin-bottom: 1.25rem;
+        }
         .footer-note { margin-top: 1.5rem; font-size: 0.85rem; color: #64748b; }
     </style>
 </head>
@@ -81,6 +92,11 @@ INDEX_HTML = """<!DOCTYPE html>
         <p>Enter your website URL to run a forensic 360° Google AdSense approval audit.</p>
         <form action="/audit" method="GET">
             <input type="url" name="url" placeholder="https://myblog.com" required autofocus>
+            <select name="profile" aria-label="Audit profile">
+                <option value="blog">Blog / editorial (legacy defaults)</option>
+                <option value="saas">SaaS / interactive tool</option>
+                <option value="docs">Docs / knowledge base</option>
+            </select>
             <button type="submit">Run 360° Readiness Audit 🚀</button>
         </form>
         <div class="footer-note">
@@ -110,7 +126,7 @@ class AuditDashboardHandler(BaseHTTPRequestHandler):
                 return
 
             try:
-                auditor = AdSenseAuditor()
+                auditor = AdSenseAuditor(profile=qs.get("profile", ["blog"])[0])
                 report = auditor.audit_site(url)
                 html_report = AuditReporter.to_html(report)
                 self.send_response(200)
